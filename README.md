@@ -44,6 +44,28 @@ Taken in the preview studio with the local provider. The `PREVIEW` badge is inte
 
 Panel-only shots at 420px: [onboarding, dark](docs/screenshots/field-onboarding-dark.png), [field, dark](docs/screenshots/field-explanation-dark.png), [vault, dark](docs/screenshots/vault-dark.png), [settings, dark](docs/screenshots/settings-dark.png), [field, light](docs/screenshots/field-explanation-light.png).
 
+## Setup
+
+No Firebase values are committed. Copy the templates and fill them in on your machine.
+
+```bash
+npm install
+cp config/firebase.config.example.json config/firebase.config.json
+cp .env.example .env.local
+```
+
+`config/firebase.config.json` is gitignored. Paste `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, and `appId` from `npx -y firebase-tools@latest apps:sdkconfig`. Leave `appCheck.mode` as `"debug"`. `cloudModel` stays `gemini-4-hydrogen` unless you change it. Do not commit that file.
+
+App Check debug token:
+
+1. Build and load the extension (below) with debug mode.
+2. Open the side panel, then its DevTools console. With no token saved, the SDK prints `AppCheck debug token`.
+3. In Firebase Console go to **App Check → Manage debug tokens** and register that token.
+4. Optional: paste the same token into **Settings → App Check debug token** in the panel (stored only in `chrome.storage.local`) or into gitignored `.env.local` as `VITE_APPCHECK_DEBUG_TOKEN`. Leave that variable empty to keep generating a token in the console.
+5. Reload the panel. Rebuild if you set the variable in `.env.local`, because Vite inlines it at build time. Do not publish a `dist/` that contains a debug token.
+
+Chrome for on-device Gemini Nano: desktop Chrome 139 or newer, `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input` set to **Enabled**, then restart. The longer flag and CLI notes are in [SETUP.md](SETUP.md).
+
 ## Develop
 
 ```bash
@@ -53,9 +75,9 @@ npm run dev     # specimen desk at http://127.0.0.1:43123
 npm run build   # unpacked extension in dist/
 ```
 
-Load `dist/` from `chrome://extensions` with Developer mode on. The specimen forms are served by `npm run dev`. Opening the side panel injects one self-contained `content.js` into that tab's top frame. Pages with no fields get no listeners. Debug App Check does not load reCAPTCHA.
+Load unpacked: `chrome://extensions` → Developer mode → **Load unpacked** → the `dist/` directory. The specimen forms are served by `npm run dev`. Opening the side panel injects one self-contained `content.js` into that tab's top frame. Pages with no fields get no listeners. Debug App Check does not load reCAPTCHA.
 
-Firebase project, App Check, and the Chrome flag are in [SETUP.md](SETUP.md). No API key or debug token is committed.
+No API key or debug token is committed.
 
 ## Layout
 
