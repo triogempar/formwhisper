@@ -8,6 +8,7 @@ import type { FormModel } from '../lib/model'
 import { readExplanationCache, writeExplanationCache } from '../lib/explanation-cache'
 import { releaseHybridSessions } from '../lib/hybrid-firebase'
 import { cancelsInference, instrumentLanguageModel, releaseOnDeviceSessions } from '../lib/session-lifecycle'
+import { injectContentScript } from './inject'
 import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
 import { createKv, STORAGE_KEYS } from '../lib/store'
@@ -243,14 +244,25 @@ export function App() {
     }
     const onUpdated = (tabId: number, info: { status?: string }) => {
       if (info.status === 'loading' && cancelsInference('loading', activeTab.current, tabId)) stopInference()
+      if (info.status === 'complete' && tabId === activeTab.current) void injectContentScript(tabId)
     }
     const onActivated = (info: { tabId: number }) => {
       if (cancelsInference('activated', activeTab.current, info.tabId)) stopInference()
+      activeTab.current = info.tabId
+      void injectContentScript(info.tabId)
     }
     const onHide = () => {
       if (document.visibilityState === 'hidden') stopInference()
     }
     document.addEventListener('visibilitychange', onHide)
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      void chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+        const tabId = tabs[0]?.id
+        if (tabId === undefined) return
+        activeTab.current = tabId
+        void injectContentScript(tabId)
+      })
+    }
     window.addEventListener('pagehide', stopInference)
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.onRemoved.addListener(onRemoved)

@@ -46,11 +46,11 @@ The extension will not call Gemini until this step has been done. A client confi
 
 ## 3. App Check
 
-The skill's web sample uses reCAPTCHA Enterprise. That is what `initializeAppCheck` constructs.
+The skill's web sample uses reCAPTCHA Enterprise. `ReCaptchaEnterpriseProvider.initialize()` always inserts `https://www.google.com/recaptcha/enterprise.js`. Manifest V3 blocks that script (`script-src 'self'`), so debug mode does not construct it.
 
-**On a Chrome extension this does not load.** Manifest V3 sets `script-src 'self'` for extension pages and rejects remote hosts in that directive. reCAPTCHA Enterprise pulls `https://www.google.com/recaptcha/enterprise.js`. The side panel, the service worker, and an offscreen document are all extension pages, so they all refuse that script. Adding the extension id as a reCAPTCHA domain does not change the CSP.
+Debug mode sets `self.FIREBASE_APPCHECK_DEBUG_TOKEN` (a stored token, or `true` when none is stored) and passes a `CustomProvider` to `initializeAppCheck`. The SDK then prints the debug token. The enterprise provider is imported only when `appCheck.mode` is `recaptcha-enterprise`, which is for a normal https origin, not the side panel.
 
-What does work, and what the hackathon rules accept, is the **App Check debug provider**:
+What works for the extension, and what the hackathon rules accept, is the **App Check debug provider**:
 
 1. Build and load the extension (steps below) with `appCheck.mode` set to `"debug"`.
 2. Open the side panel, then its DevTools console. With no token configured, the SDK prints `AppCheck debug token: "…"`.
@@ -102,7 +102,7 @@ Specimen forms, with the preview provider (no Firebase config required):
 npm run dev
 ```
 
-Open http://127.0.0.1:43123 and pick a form. With the extension installed, the same pages are also visible to the real side panel, because the content script matches `http://127.0.0.1/*`.
+Open http://127.0.0.1:43123 and pick a form. The extension does not inject a content script into every tab. Opening the side panel injects one self-contained `content.js` into that tab's top frame. Pages with no fields get no listeners.
 
 In the vault, **Load the Ellison specimen** fills a fictional profile so the demo video has something to place in the boxes. It is not loaded until you ask.
 

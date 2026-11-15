@@ -53,7 +53,7 @@ npm run dev     # specimen desk at http://127.0.0.1:43123
 npm run build   # unpacked extension in dist/
 ```
 
-Load `dist/` from `chrome://extensions` with Developer mode on. The specimen forms are served by `npm run dev`; the content script also runs on ordinary `http` and `https` pages.
+Load `dist/` from `chrome://extensions` with Developer mode on. The specimen forms are served by `npm run dev`. Opening the side panel injects one self-contained `content.js` into that tab's top frame. Pages with no fields get no listeners. Debug App Check does not load reCAPTCHA.
 
 Firebase project, App Check, and the Chrome flag are in [SETUP.md](SETUP.md). No API key or debug token is committed.
 

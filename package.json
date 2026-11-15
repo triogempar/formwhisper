@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite --mode preview --host 127.0.0.1 --port 43123 --strictPort",
     "dev:ext": "vite --mode extension --host 127.0.0.1 --port 43123 --strictPort",
-    "build": "vite build --mode extension",
+    "build": "vite build --mode extension && node scripts/bundle-content.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",

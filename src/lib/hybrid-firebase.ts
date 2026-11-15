@@ -1,5 +1,4 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check'
 import {
   getAI,
   getGenerativeModel,
@@ -23,14 +22,10 @@ import { SEMANTIC_TYPES, type InferenceBadge, type RunMode } from './types'
  * Firebase AI Logic hybrid wiring, following the firebase-ai-logic-basics skill
  * and https://firebase.google.com/docs/ai-logic/hybrid/web/get-started
  *
- * Chrome extension note: Manifest V3 blocks the reCAPTCHA Enterprise script
- * (script-src 'self'), so local and hackathon builds use the App Check debug
- * provider. The ReCaptchaEnterpriseProvider is still constructed, as the skill
- * requires, and is the path that runs when a normal web origin can load the script.
- * Debug tokens are never hardcoded. See SETUP.md.
+ * Debug mode uses CustomProvider plus FIREBASE_APPCHECK_DEBUG_TOKEN so the
+ * extension never loads the reCAPTCHA script. The enterprise provider is loaded
+ * only when appCheck.mode is recaptcha-enterprise. See SETUP.md.
  */
-
-type DebugGlobal = typeof globalThis & { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }
 
 type Kind = 'field' | 'checklist' | 'scan'
 
@@ -39,32 +34,22 @@ const SYSTEM = 'You are Formwhisper, a calm clerk. Explain bureaucratic form que
 let app: FirebaseApp | null = null
 let ready: Promise<void> | null = null
 
-function applyDebugToken(config: FwConfig, storedToken: string | null): void {
-  if (config.appCheck.mode !== 'debug') return
-  // The skill's web sample gates this on import.meta.env.DEV. An unpacked
-  // extension is a production Vite build, so the token is applied whenever
-  // the gitignored config selects debug mode. The value comes from
-  // VITE_APPCHECK_DEBUG_TOKEN or chrome.storage, never from source.
-  const fromEnv = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN
-  ;(globalThis as DebugGlobal).FIREBASE_APPCHECK_DEBUG_TOKEN = fromEnv || storedToken || true
-}
-
 export function ensureFirebase(config: FwConfig, storedToken: string | null): Promise<void> {
   if (ready) return ready
-  ready = Promise.resolve().then(() => {
-    applyDebugToken(config, storedToken)
+  ready = (async () => {
     app = initializeApp(config.firebase)
-    const siteKey =
-      config.appCheck.recaptchaEnterpriseSiteKey ||
-      (config.appCheck.mode === 'debug' ? 'extension-debug-provider' : '')
+    if (config.appCheck.mode === 'debug') {
+      const { initDebugAppCheck } = await import('./app-check-debug')
+      initDebugAppCheck(app, storedToken)
+      return
+    }
+    const siteKey = config.appCheck.recaptchaEnterpriseSiteKey
     if (!siteKey) {
       throw new Error('Add a reCAPTCHA Enterprise site key before using App Check in production mode.')
     }
-    initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(siteKey),
-      isTokenAutoRefreshEnabled: true,
-    })
-  })
+    const { initEnterpriseAppCheck } = await import('./app-check-enterprise')
+    initEnterpriseAppCheck(app, siteKey)
+  })()
   return ready
 }
 

@@ -26,13 +26,6 @@ export default defineManifest({
   side_panel: {
     default_path: 'src/sidepanel/index.html',
   },
-  permissions: ['sidePanel', 'storage', 'activeTab', 'tabs'],
+  permissions: ['sidePanel', 'storage', 'activeTab', 'tabs', 'scripting'],
   host_permissions: ['<all_urls>'],
-  content_scripts: [
-    {
-      matches: ['http://*/*', 'https://*/*'],
-      js: ['src/content/index.ts'],
-      run_at: 'document_idle',
-    },
-  ],
 })
