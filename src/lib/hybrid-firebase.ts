@@ -13,6 +13,7 @@ import {
 import type { FwConfig } from './config'
 import { DEFAULT_CLOUD_MODEL } from './config'
 import type { ExplainOptions, FormModel } from './model'
+import { destroySession, noteModelActivity } from './session-lifecycle'
 import { parseChecklist, parseFieldExplanation, parseScan, partialExplanation } from './parse'
 import { buildChecklistPrompt, buildFieldPrompt, buildScanPrompt } from './prompts'
 import { checklistJsonSchema, fieldJsonSchema, scanJsonSchema } from './schemas'
@@ -157,6 +158,30 @@ function schemaFor(kind: Kind) {
   return scanFirebaseSchema()
 }
 
+type HeldAdapter = {
+  oldSession?: { destroy?: () => void } | null
+  downloadPromise?: Promise<{ destroy?: () => void } | void> | null
+}
+
+const heldModels = new Set<GenerativeModel>()
+
+function releaseModelSession(model: GenerativeModel): void {
+  const adapter = (model as unknown as { chromeAdapter?: HeldAdapter }).chromeAdapter
+  if (!adapter) return
+  destroySession(adapter.oldSession)
+  adapter.oldSession = null
+  const pending = adapter.downloadPromise
+  if (!pending) return
+  void pending.then((session) => {
+    if (session && typeof session === 'object') destroySession(session)
+  }).catch(() => undefined)
+}
+
+export function releaseHybridSessions(): void {
+  for (const model of heldModels) releaseModelSession(model)
+  noteModelActivity()
+}
+
 function rawBase64(value: string): string {
   const comma = value.indexOf(',')
   if (value.startsWith('data:') && comma >= 0) return value.slice(comma + 1)
@@ -206,6 +231,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
       },
     })
     cache.set(key, created)
+    heldModels.add(created)
     return created
   }
 
@@ -215,54 +241,71 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
       await ensureFirebase(config, storedToken)
       const model = modelFor(mode, 'field')
       const prompt = buildFieldPrompt(field)
-      if (typeof model.generateContentStream === 'function') {
-        try {
-          const streaming = await model.generateContentStream(prompt, { signal: options?.signal })
-          let buffer = ''
-          for await (const chunk of streaming.stream) {
-            if (options?.signal?.aborted) {
-              throw new DOMException('The request was cancelled.', 'AbortError')
+      try {
+        if (typeof model.generateContentStream === 'function') {
+          try {
+            const streaming = await model.generateContentStream(prompt, { signal: options?.signal })
+            let buffer = ''
+            for await (const chunk of streaming.stream) {
+              if (options?.signal?.aborted) {
+                throw new DOMException('The request was cancelled.', 'AbortError')
+              }
+              try {
+                buffer += chunk.text()
+              } catch {
+                continue
+              }
+              const partial = partialExplanation(buffer)
+              if (partial) options?.onPartial?.(partial)
             }
-            try {
-              buffer += chunk.text()
-            } catch {
-              continue
+            const finalResponse = await streaming.response
+            return {
+              data: parseFieldExplanation(finalResponse.text() || buffer),
+              source: badgeFrom(finalResponse.inferenceSource),
             }
-            const partial = partialExplanation(buffer)
-            if (partial) options?.onPartial?.(partial)
+          } catch (error) {
+            if (options?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
           }
-          const finalResponse = await streaming.response
-          return {
-            data: parseFieldExplanation(finalResponse.text() || buffer),
-            source: badgeFrom(finalResponse.inferenceSource),
-          }
-        } catch (error) {
-          if (options?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
         }
-      }
-      const result = await model.generateContent(prompt, { signal: options?.signal })
-      return {
-        data: parseFieldExplanation(result.response.text()),
-        source: badgeFrom(result.response.inferenceSource),
-      }
-    },
-    async checklist(fields, title, mode) {
-      await ensureFirebase(config, storedToken)
-      const result = await modelFor(mode, 'checklist').generateContent(buildChecklistPrompt(fields, title))
-      return {
-        data: parseChecklist(result.response.text()),
-        source: badgeFrom(result.response.inferenceSource),
+        const result = await model.generateContent(prompt, { signal: options?.signal })
+        return {
+          data: parseFieldExplanation(result.response.text()),
+          source: badgeFrom(result.response.inferenceSource),
+        }
+      } finally {
+        releaseModelSession(model)
       }
     },
-    async readImage(jpegBase64, mode) {
+    async checklist(fields, title, mode, options?: ExplainOptions) {
       await ensureFirebase(config, storedToken)
-      const result = await modelFor(mode, 'scan').generateContent([
-        { type: 'text', text: buildScanPrompt() },
-        { type: 'inlineData', inlineData: { mimeType: 'image/jpeg', data: rawBase64(jpegBase64) } },
-      ])
-      return {
-        data: parseScan(result.response.text()),
-        source: badgeFrom(result.response.inferenceSource),
+      const model = modelFor(mode, 'checklist')
+      try {
+        const result = await model.generateContent(buildChecklistPrompt(fields, title), { signal: options?.signal })
+        return {
+          data: parseChecklist(result.response.text()),
+          source: badgeFrom(result.response.inferenceSource),
+        }
+      } finally {
+        releaseModelSession(model)
+      }
+    },
+    async readImage(jpegBase64, mode, options?: ExplainOptions) {
+      await ensureFirebase(config, storedToken)
+      const model = modelFor(mode, 'scan')
+      try {
+        const result = await model.generateContent(
+          [
+            { type: 'text', text: buildScanPrompt() },
+            { type: 'inlineData', inlineData: { mimeType: 'image/jpeg', data: rawBase64(jpegBase64) } },
+          ],
+          { signal: options?.signal },
+        )
+        return {
+          data: parseScan(result.response.text()),
+          source: badgeFrom(result.response.inferenceSource),
+        }
+      } finally {
+        releaseModelSession(model)
       }
     },
     prepareDevice(onProgress) {

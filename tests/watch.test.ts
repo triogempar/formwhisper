@@ -21,6 +21,7 @@ describe('watchFields', () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined)
     watchFields((field) => seen.push(field.label))
 
+    document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' }))
     document.getElementById('title')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
     document.getElementById('first')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
     expect(seen).toEqual([])

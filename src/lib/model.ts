@@ -10,8 +10,8 @@ export type ExplainOptions = {
 export interface FormModel {
   kind: ModelKind
   explainField(field: FieldContext, mode: RunMode, options?: ExplainOptions): Promise<ModelAnswer<FieldExplanation>>
-  checklist(fields: FieldContext[], title: string, mode: RunMode): Promise<ModelAnswer<Checklist>>
-  readImage(jpegBase64: string, mode: RunMode): Promise<ModelAnswer<PageScan>>
+  checklist(fields: FieldContext[], title: string, mode: RunMode, options?: ExplainOptions): Promise<ModelAnswer<Checklist>>
+  readImage(jpegBase64: string, mode: RunMode, options?: ExplainOptions): Promise<ModelAnswer<PageScan>>
   /** Must be invoked from a user gesture. Absent on the preview provider. */
   prepareDevice?: (onProgress: (ratio: number) => void) => Promise<void>
 }

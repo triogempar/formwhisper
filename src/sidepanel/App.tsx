@@ -6,6 +6,8 @@ import { EMPTY_LEDGER, normalizeLedger, recordInference, type Ledger } from '../
 import { matchVault } from '../lib/match'
 import type { FormModel } from '../lib/model'
 import { readExplanationCache, writeExplanationCache } from '../lib/explanation-cache'
+import { releaseHybridSessions } from '../lib/hybrid-firebase'
+import { cancelsInference, instrumentLanguageModel, releaseOnDeviceSessions } from '../lib/session-lifecycle'
 import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
 import { createKv, STORAGE_KEYS } from '../lib/store'
@@ -99,6 +101,7 @@ export function App() {
   const [live, setLive] = useState('')
   const ticket = useRef(0)
   const explainAbort = useRef<AbortController | null>(null)
+  const activeTab = useRef<number | null>(null)
   const declineRef = useRef<HTMLButtonElement>(null)
   const latest = useRef({ settings, profile, readiness, model, vault, ledger })
   latest.current = { settings, profile, readiness, model, vault, ledger }
@@ -169,6 +172,8 @@ export function App() {
     const current = latest.current.model
     if (!current) return
     explainAbort.current?.abort()
+    releaseHybridSessions()
+    releaseOnDeviceSessions()
     const controller = new AbortController()
     explainAbort.current = controller
     const id = ++ticket.current
@@ -226,7 +231,54 @@ export function App() {
   }
 
   useEffect(() => {
-    return transport.listen((field) => {
+    instrumentLanguageModel()
+    const stopInference = () => {
+      explainAbort.current?.abort()
+      downloadGen.current += 1
+      releaseHybridSessions()
+      releaseOnDeviceSessions()
+    }
+    const onRemoved = (tabId: number) => {
+      if (cancelsInference('removed', activeTab.current, tabId)) stopInference()
+    }
+    const onUpdated = (tabId: number, info: { status?: string }) => {
+      if (info.status === 'loading' && cancelsInference('loading', activeTab.current, tabId)) stopInference()
+    }
+    const onActivated = (info: { tabId: number }) => {
+      if (cancelsInference('activated', activeTab.current, info.tabId)) stopInference()
+    }
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') stopInference()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', stopInference)
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      chrome.tabs.onRemoved.addListener(onRemoved)
+      chrome.tabs.onUpdated.addListener(onUpdated)
+      chrome.tabs.onActivated.addListener(onActivated)
+    }
+    let port: chrome.runtime.Port | null = null
+    if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+      port = chrome.runtime.connect({ name: 'formwhisper-panel' })
+      port.onDisconnect.addListener(stopInference)
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', stopInference)
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.onRemoved.removeListener(onRemoved)
+        chrome.tabs.onUpdated.removeListener(onUpdated)
+        chrome.tabs.onActivated.removeListener(onActivated)
+      }
+      port?.onDisconnect.removeListener(stopInference)
+      port?.disconnect()
+      stopInference()
+    }
+  }, [])
+
+  useEffect(() => {
+    return transport.listen((field, tabId) => {
+      if (typeof tabId === 'number') activeTab.current = tabId
       routeField(field)
     })
     // routeField reads the latest ref; the subscription itself is stable.
@@ -254,15 +306,21 @@ export function App() {
 
   async function runChecklist(fields: FieldContext[], title: string, mode: RunMode) {
     if (!model) return
+    explainAbort.current?.abort()
+    const controller = new AbortController()
+    explainAbort.current = controller
+    const id = ++ticket.current
     setNotice(t('loading'))
     try {
-      const answer = await model.checklist(fields, title, mode)
+      const answer = await model.checklist(fields, title, mode, { signal: controller.signal })
+      if (id !== ticket.current || controller.signal.aborted) return
       setChecklist(answer)
       setView('page')
       setLive(answer.data.summary)
       await remember(answer.source)
       setNotice('')
     } catch (error) {
+      if (controller.signal.aborted) return
       setNotice(error instanceof Error ? error.message : 'The request failed.')
     }
   }
@@ -289,20 +347,27 @@ export function App() {
 
   async function runScan(mode: RunMode) {
     if (!model) return
+    explainAbort.current?.abort()
+    const controller = new AbortController()
+    explainAbort.current = controller
+    const id = ++ticket.current
     try {
       const image = await transport.capture()
+      if (id !== ticket.current || controller.signal.aborted) return
       if (!image && model.kind === 'hybrid') {
         setNotice(t('captureMissing'))
         return
       }
       if (image) setShot(image)
-      const answer = await model.readImage(image || '', mode)
+      const answer = await model.readImage(image || '', mode, { signal: controller.signal })
+      if (id !== ticket.current || controller.signal.aborted) return
       setScan(answer)
       setView('page')
       setLive(answer.data.pageSummary)
       await remember(answer.source)
       setNotice('')
     } catch (error) {
+      if (controller.signal.aborted) return
       setNotice(error instanceof Error ? error.message : 'The picture could not be read.')
     }
   }
@@ -336,7 +401,7 @@ export function App() {
       now: () => Date.now(),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       availability: async () => (await detectReadiness()).state,
-      isCancelled: () => generation !== downloadGen.current,
+      isCancelled: () => generation !== downloadGen.current || document.visibilityState === 'hidden',
       startDownload: (onProgress) => {
         if (currentModel?.prepareDevice) return currentModel.prepareDevice(onProgress)
         return downloadLanguageModel(onProgress)

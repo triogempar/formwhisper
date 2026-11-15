@@ -30,6 +30,12 @@ export function watchFields(onField: (field: FieldContext) => void) {
   let userControl: Element | null = null
   let timer = 0
   let latest: Element | null = null
+  let gestureAt = 0
+  const noteGesture = () => {
+    gestureAt = performance.now()
+  }
+  document.addEventListener('pointerdown', noteGesture, true)
+  document.addEventListener('keydown', noteGesture, true)
 
   const publish = (control: Element) => {
     const field = extractField(control)
@@ -47,6 +53,7 @@ export function watchFields(onField: (field: FieldContext) => void) {
   }
 
   document.addEventListener('focusin', (event) => {
+    if (performance.now() - gestureAt > 1000) return
     const control = controlFrom(event.target)
     if (!control) return
     if (performance.now() < suppressUntil.value && control !== userControl) return
@@ -55,6 +62,7 @@ export function watchFields(onField: (field: FieldContext) => void) {
   })
 
   document.addEventListener('click', (event) => {
+    noteGesture()
     const control = controlFrom(event.target)
     if (!control) return
     window.clearTimeout(timer)

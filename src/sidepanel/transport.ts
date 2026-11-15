@@ -1,6 +1,6 @@
 import type { FieldContext } from '../lib/types'
 
-export type FieldHandler = (field: FieldContext) => void
+export type FieldHandler = (field: FieldContext, tabId?: number) => void
 
 export type PanelTransport = {
   listen(handler: FieldHandler): () => void
@@ -95,9 +95,12 @@ async function activeTabId(): Promise<number> {
 function extensionTransport(): PanelTransport {
   return {
     listen(handler) {
-      const listener = (message: { source?: string; type?: string; field?: FieldContext }) => {
+      const listener = (
+        message: { source?: string; type?: string; field?: FieldContext },
+        sender: chrome.runtime.MessageSender,
+      ) => {
         if (message?.source === 'formwhisper-page' && message.type === 'FIELD' && message.field) {
-          handler(message.field)
+          handler(message.field, sender.tab?.id)
         }
       }
       chrome.runtime.onMessage.addListener(listener)
