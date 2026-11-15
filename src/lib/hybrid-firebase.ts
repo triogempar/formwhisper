@@ -205,7 +205,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
         model: config.cloudModel || DEFAULT_CLOUD_MODEL,
         systemInstruction: kind === 'field' ? FIELD_SYSTEM : SYSTEM,
         generationConfig: {
-          maxOutputTokens: kind === 'field' ? 128 : 2048,
+          maxOutputTokens: kind === 'field' ? 1024 : 4096,
           responseMimeType: 'application/json',
           responseSchema: schemaFor(kind),
         },
