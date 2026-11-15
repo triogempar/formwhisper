@@ -6,6 +6,7 @@ import { EMPTY_LEDGER, normalizeLedger, recordInference, type Ledger } from '../
 import { matchVault } from '../lib/match'
 import type { FormModel } from '../lib/model'
 import { readExplanationCache, writeExplanationCache } from '../lib/explanation-cache'
+import { friendlyModelError } from '../lib/errors'
 import { createFieldRequests, type FieldRequests } from '../lib/field-request'
 import { cancelsInference, instrumentLanguageModel } from '../lib/session-lifecycle'
 import { injectContentScript } from './inject'
@@ -36,7 +37,7 @@ type FieldView =
   | { status: 'blocked'; field: FieldContext }
   | { status: 'ready'; field: FieldContext; answer: ModelAnswer<import('../lib/types').FieldExplanation>; match: VaultMatch | null }
   | { status: 'timeout'; field: FieldContext }
-  | { status: 'error'; field: FieldContext; message: string }
+  | { status: 'error'; field: FieldContext; message: string; appCheck?: boolean }
 
 function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object') return DEFAULT_SETTINGS
@@ -102,6 +103,8 @@ export function App() {
   const [notice, setNotice] = useState('')
   const [needsReload, setNeedsReload] = useState(false)
   const [tokenDraft, setTokenDraft] = useState('')
+  const [knownDebugToken, setKnownDebugToken] = useState('')
+  const [appCheckBlocked, setAppCheckBlocked] = useState(false)
   const [live, setLive] = useState('')
   const ticket = useRef(0)
   const explainAbort = useRef<AbortController | null>(null)
@@ -132,6 +135,7 @@ export function App() {
         setSettings(nextSettings)
         setLedger(normalizeLedger(storedLedger))
         setTokenDraft(storedToken || '')
+        setKnownDebugToken(storedToken || '')
         if (isStoredVault(storedVault)) {
           setVault(storedVault)
           if (!storedVault.encrypted) setProfile(normalizeProfile(storedVault.profile))
@@ -185,7 +189,8 @@ export function App() {
         }
         if (next.status === 'error') {
           setFieldView(next)
-          setLive(next.message)
+          if (next.appCheck) setAppCheckBlocked(true)
+          setLive(next.appCheck ? translate(latest.current.settings.locale, 'appCheckBlocked') : next.message)
           return
         }
         setFieldView({ status: 'idle' })
@@ -222,6 +227,16 @@ export function App() {
       }
     }
     fieldRequests.current?.start(field, mode, options)
+  }
+
+  async function copyDebugToken() {
+    if (!knownDebugToken) return
+    try {
+      await navigator.clipboard.writeText(knownDebugToken)
+      setNotice(t('tokenCopied'))
+    } catch {
+      setNotice(t('tokenCopyFailed'))
+    }
   }
 
   function reloadActivePage() {
@@ -362,7 +377,9 @@ export function App() {
       setNotice('')
     } catch (error) {
       if (controller.signal.aborted) return
-      setNotice(error instanceof Error ? error.message : 'The request failed.')
+      const friendly = friendlyModelError(error)
+      if (friendly.appCheck) setAppCheckBlocked(true)
+      setNotice(friendly.appCheck ? t('appCheckBlocked') : friendly.message)
     }
   }
 
@@ -410,7 +427,9 @@ export function App() {
       setNotice('')
     } catch (error) {
       if (controller.signal.aborted) return
-      setNotice(error instanceof Error ? error.message : 'The picture could not be read.')
+      const friendly = friendlyModelError(error)
+      if (friendly.appCheck) setAppCheckBlocked(true)
+      setNotice(friendly.appCheck ? t('appCheckBlocked') : friendly.message)
     }
   }
 
@@ -488,6 +507,14 @@ export function App() {
           <span>{t('previewBanner')}</span>
         </div>
       ) : null}
+      {appCheckBlocked ? (
+        <div className="banner" role="status">
+          <span>{t('appCheckBlocked')}</span>
+          {knownDebugToken ? (
+            <button className="btn" type="button" onClick={() => void copyDebugToken()}>{t('copyDebugToken')}</button>
+          ) : null}
+        </div>
+      ) : null}
       {needsReload ? (
         <div className="banner" role="status">
           <span>{t('reloadPage')}</span>
@@ -547,6 +574,9 @@ export function App() {
             showCloud={!settings.neverCloud}
             onRetry={(field) => retryField(field)}
             onAskCloud={(field) => explain(field, 'only-cloud', { force: true })}
+            onCancel={() => fieldRequests.current?.cancel('user')}
+            onCopyToken={() => void copyDebugToken()}
+            canCopyToken={Boolean(knownDebugToken)}
             onFill={(match, fieldId) => void onFill(match, fieldId)}
             vaultLocked={Boolean(vault?.encrypted && !profile)}
           />
@@ -615,7 +645,9 @@ export function App() {
             onLocale={(locale) => void persistSettings({ ...settings, locale })}
             onToken={setTokenDraft}
             onSaveToken={async () => {
-              await kv.set(STORAGE_KEYS.debugToken, tokenDraft.trim())
+              const saved = tokenDraft.trim()
+              setKnownDebugToken(saved)
+              await kv.set(STORAGE_KEYS.debugToken, saved)
               setNotice(t('tokenSaved'))
             }}
             onSetup={() => setShowSetup(true)}
@@ -667,6 +699,9 @@ function FieldBody({
   showCloud,
   onRetry,
   onAskCloud,
+  onCancel,
+  onCopyToken,
+  canCopyToken,
   onFill,
   vaultLocked,
 }: {
@@ -675,6 +710,9 @@ function FieldBody({
   showCloud: boolean
   onRetry: (field: FieldContext) => void
   onAskCloud: (field: FieldContext) => void
+  onCancel: () => void
+  onCopyToken: () => void
+  canCopyToken: boolean
   onFill: (match: VaultMatch, fieldId: string) => void
   vaultLocked: boolean
 }) {
@@ -692,6 +730,11 @@ function FieldBody({
         <h2>{view.field.label || view.field.name || 'Field'}</h2>
         {view.status === 'loading' && view.partial ? <p className="meaning">{view.partial}</p> : <div className="skeleton" />}
         <ThinkingLine active={view.status === 'loading'} label={view.status === 'wait' ? t('waiting') : t('thinking')} />
+        {view.status === 'loading' ? (
+          <div className="actions">
+            <button className="btn-outline" type="button" onClick={onCancel}>{t('cancel')}</button>
+          </div>
+        ) : null}
       </section>
     )
   }
@@ -721,7 +764,12 @@ function FieldBody({
     return (
       <section className="pad">
         <h2>{view.field.label || view.field.name}</h2>
-        <p className="error" role="alert">{view.message}</p>
+        <p className="error" role="alert">{view.appCheck ? t('appCheckBlocked') : view.message}</p>
+        {view.appCheck && canCopyToken ? (
+          <div className="actions">
+            <button className="btn-outline" type="button" onClick={onCopyToken}>{t('copyDebugToken')}</button>
+          </div>
+        ) : null}
       </section>
     )
   }

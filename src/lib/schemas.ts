@@ -6,8 +6,8 @@ export function fieldJsonSchema(): Record<string, unknown> {
     type: 'object',
     properties: {
       semanticType: { type: 'string', enum: [...SEMANTIC_TYPES] },
-      explanation: { type: 'string', description: 'One short sentence.' },
-      whyAsked: { type: 'string', description: 'One sentence.' },
+      explanation: { type: 'string' },
+      whyAsked: { type: 'string' },
       commonMistakes: { type: 'array', items: { type: 'string' }, maxItems: 3 },
       sensitivity: { type: 'string', enum: ['ordinary', 'identity'] },
     },

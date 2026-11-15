@@ -3,9 +3,22 @@ import { clip } from './text'
 
 const SKIP_INPUT_TYPES = new Set(['hidden', 'password', 'submit', 'button', 'reset', 'image'])
 
+/** Visible words, with `<br>` and nested markup turned into spaces. */
+export function visibleLabelText(root: Element): string {
+  const clone = root.cloneNode(true) as Element
+  clone.querySelectorAll('input, textarea, select, button, script, style').forEach((node) => node.remove())
+  clone.querySelectorAll('br').forEach((node) => node.replaceWith('\n'))
+  const lines = (clone.textContent || '')
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  return lines.join(' ').replace(/[\s:*]+$/g, '').trim()
+}
+
 function cleanedText(root: Element): string {
   const clone = root.cloneNode(true) as Element
   clone.querySelectorAll('input, textarea, select, button, script, style, small').forEach((node) => node.remove())
+  clone.querySelectorAll('br').forEach((node) => node.replaceWith(' '))
   return (clone.textContent || '').replace(/\s+/g, ' ').trim()
 }
 
@@ -98,7 +111,8 @@ export function humanizeFieldName(raw: string): string {
     .split(/\s+/)
     .flatMap((token) => token.replace(/([a-z])([A-Z])/g, '$1 $2').split(/\s+/))
     .flatMap((token) => splitFieldToken(token.toLowerCase()))
-    .filter(Boolean)
+    .filter((word) => NAME_TOKENS.includes(word))
+  if (pieces.length === 0) return ''
   return pieces
     .map((word, index) => (index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
     .join(' ')
@@ -156,17 +170,37 @@ function previousCellText(el: Element): string {
   const cells = [...cell.parentElement.children].filter((child) => child.tagName === 'TD' || child.tagName === 'TH')
   const index = cells.indexOf(cell)
   if (index <= 0) return ''
-  return clip(cleanedText(cells[index - 1]), 200)
+  return clip(visibleLabelText(cells[index - 1]), 200)
+}
+
+/** Label in the column or div beside the control, including a wrapping `<br>`. */
+function columnLabel(el: Element): string {
+  let node: Element | null = el.parentElement
+  for (let depth = 0; depth < 3 && node && node.tagName !== 'BODY'; depth += 1) {
+    const previous = node.previousElementSibling
+    if (previous && !previous.querySelector('input, textarea, select')) {
+      const text = visibleLabelText(previous)
+      if (text) return clip(text, 200)
+    }
+    node = node.parentElement
+  }
+  return ''
+}
+
+function typeField(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string {
+  const type = el instanceof HTMLSelectElement ? 'select' : el instanceof HTMLTextAreaElement ? 'textarea' : el.type || 'text'
+  return `${type} field`
 }
 
 function textBeforeControl(el: Element): string {
   let sibling = el.previousSibling
   while (sibling) {
     if (sibling.nodeType === Node.TEXT_NODE) {
-      const text = (sibling.textContent || '').replace(/\s+/g, ' ').trim()
+      const text = (sibling.textContent || '').replace(/\s+/g, ' ').trim().replace(/[\s:*]+$/g, '')
       if (text) return clip(text, 200)
-    } else if (sibling instanceof Element && !isWritableControl(sibling)) {
-      const text = cleanedText(sibling)
+    } else if (sibling instanceof Element) {
+      if (isWritableControl(sibling) || sibling.querySelector('input, textarea, select')) break
+      const text = visibleLabelText(sibling)
       if (text) return clip(text, 200)
     }
     sibling = sibling.previousSibling
@@ -178,12 +212,14 @@ function resolveLabel(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectEle
   return (
     labelForControl(el) ||
     previousCellText(el) ||
+    columnLabel(el) ||
     textBeforeControl(el) ||
     legendText(el) ||
     el.getAttribute('placeholder') ||
     el.getAttribute('title') ||
     humanizeFieldName(el.getAttribute('name') || '') ||
-    humanizeFieldName(el.id || '')
+    humanizeFieldName(el.id || '') ||
+    typeField(el)
   )
 }
 

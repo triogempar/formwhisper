@@ -31,6 +31,7 @@ import { SEMANTIC_TYPES, type InferenceBadge, type RunMode } from './types'
 type Kind = 'field' | 'checklist' | 'scan'
 
 const SYSTEM = 'You are Formwhisper, a calm clerk. Explain bureaucratic form questions in plain English. Never invent or request personal data. Respond only with JSON that matches the schema.'
+const FIELD_SYSTEM = 'Explain one form question in plain English. JSON only. Do not invent personal data.'
 
 let app: FirebaseApp | null = null
 let ready: Promise<void> | null = null
@@ -71,18 +72,18 @@ function fieldFirebaseSchema() {
     description: 'Plain-language explanation of one form field.',
     properties: {
       semanticType: Schema.enumString({
-        description: 'Vault fact that matches this field, or other.',
+        description: 'Vault key, or other.',
         enum: [...SEMANTIC_TYPES],
       }),
-      explanation: Schema.string({ description: 'Two sentences. No personal data.' }),
-      whyAsked: Schema.string({ description: 'Why the organisation asks.' }),
+      explanation: Schema.string({ description: 'One short sentence.' }),
+      whyAsked: Schema.string({ description: 'One short sentence.' }),
       commonMistakes: Schema.array({
-        description: 'Up to three specific mistakes.',
+        description: 'Up to 3 short items.',
         maxItems: 3,
         items: Schema.string(),
       }),
       sensitivity: Schema.enumString({
-        description: 'identity for government or account numbers.',
+        description: 'ordinary or identity.',
         enum: ['ordinary', 'identity'],
       }),
     },
@@ -202,9 +203,9 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
       mode: toInferenceMode(mode),
       inCloudParams: {
         model: config.cloudModel || DEFAULT_CLOUD_MODEL,
-        systemInstruction: SYSTEM,
+        systemInstruction: kind === 'field' ? FIELD_SYSTEM : SYSTEM,
         generationConfig: {
-          maxOutputTokens: kind === 'field' ? 256 : 2048,
+          maxOutputTokens: kind === 'field' ? 128 : 2048,
           responseMimeType: 'application/json',
           responseSchema: schemaFor(kind),
         },
@@ -219,7 +220,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
           initialPrompts: [
             {
               role: 'system',
-              content: [{ type: 'text', value: SYSTEM }],
+              content: [{ type: 'text', value: kind === 'field' ? FIELD_SYSTEM : SYSTEM }],
             },
           ],
         },
@@ -242,6 +243,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
       const prompt = buildFieldPrompt(field)
       try {
         if (typeof model.generateContentStream === 'function') {
+          let sawToken = false
           try {
             const streaming = await model.generateContentStream(prompt, { signal: options?.signal })
             let buffer = ''
@@ -249,6 +251,8 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
               if (options?.signal?.aborted) {
                 throw new DOMException('The request was cancelled.', 'AbortError')
               }
+              options?.onActivity?.('token')
+              sawToken = true
               try {
                 buffer += chunk.text()
               } catch {
@@ -264,8 +268,10 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
             }
           } catch (error) {
             if (options?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
+            if (sawToken) throw error
           }
         }
+        options?.onActivity?.('full')
         const result = await model.generateContent(prompt, { signal: options?.signal })
         return {
           data: parseFieldExplanation(result.response.text()),

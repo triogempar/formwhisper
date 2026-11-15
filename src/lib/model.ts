@@ -5,6 +5,8 @@ export type ModelKind = 'mock' | 'hybrid'
 export type ExplainOptions = {
   signal?: AbortSignal
   onPartial?: (text: string) => void
+  /** `token` resets the inactivity timer. `full` means this call is not streaming. */
+  onActivity?: (event: 'token' | 'full') => void
 }
 
 export interface FormModel {

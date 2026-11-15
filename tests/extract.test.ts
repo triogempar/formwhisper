@@ -13,6 +13,7 @@ describe('humanizeFieldName', () => {
     expect(humanizeFieldName('22faxphone')).toBe('Fax phone')
     expect(humanizeFieldName('01__title')).toBe('Title')
     expect(humanizeFieldName('02firstname')).toBe('First name')
+    expect(humanizeFieldName('46cccstsvc')).toBe('')
   })
 })
 
@@ -100,5 +101,22 @@ describe('extractField', () => {
     expect(extractField(doc.getElementById('nick-field')!)?.label).toBe('Preferred name')
     expect(extractField(doc.getElementById('promo')!)?.label).toBe('Promo code')
     expect(extractField(doc.getElementById('company')!)?.label).toBe('Company')
+  })
+
+  it('joins a wrapped table label and ignores a name with no words', () => {
+    const doc = mount(`
+      <table>
+        <tr>
+          <td>Card Customer Service<br>Phone *</td>
+          <td><input id="card-phone" name="46cccstsvc"></td>
+        </tr>
+      </table>
+      <div class="col-xs-6 text-right">Card Customer Service Phone:</div>
+      <div class="col-xs-6"><input id="svc" name="46cccstsvc"></div>
+      <input id="bare" name="46cccstsvc" type="text">
+    `)
+    expect(extractField(doc.getElementById('card-phone')!)?.label).toBe('Card Customer Service Phone')
+    expect(extractField(doc.getElementById('svc')!)?.label).toBe('Card Customer Service Phone')
+    expect(extractField(doc.getElementById('bare')!)?.label).toBe('text field')
   })
 })

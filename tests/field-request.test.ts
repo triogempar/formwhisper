@@ -1,9 +1,10 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
-import { createFieldRequests, DEVICE_TIMEOUT_MESSAGE, type FieldRequests } from '../src/lib/field-request'
+import { createFieldRequests, DEVICE_TIMEOUT_MESSAGE, type FieldRequests, type RequestTimeouts } from '../src/lib/field-request'
 import { parseFieldExplanation } from '../src/lib/parse'
 import { instrumentLanguageModel, releaseOnDeviceSessions } from '../src/lib/session-lifecycle'
+import type { ExplainOptions, FormModel } from '../src/lib/model'
 import type { FieldContext, RunMode } from '../src/lib/types'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -58,7 +59,7 @@ function installLanguageModel(prompt: (session: FakeSession) => Promise<string>,
   }
   instrumentLanguageModel(host)
   let old: FakeSession | null = null
-  async function explainField(_field: FieldContext, _mode: RunMode) {
+  async function explainField(_field: FieldContext, _mode: RunMode, _options?: ExplainOptions) {
     const created = await host.LanguageModel.create()
     if (old && old !== created) old.destroy()
     old = created
@@ -69,9 +70,9 @@ function installLanguageModel(prompt: (session: FakeSession) => Promise<string>,
 }
 
 function mount(
-  explainField: ReturnType<typeof installLanguageModel>['explainField'],
+  explainField: FormModel['explainField'],
   start: (requests: FieldRequests) => void,
-  timeoutMs = 25_000,
+  timeouts?: RequestTimeouts,
 ) {
   const el = document.createElement('div')
   document.body.append(el)
@@ -82,7 +83,7 @@ function mount(
     if (!requests.current) {
       requests.current = createFieldRequests({
         explainField,
-        timeoutMs,
+        timeouts,
         onView: (view) => {
           if (view.status === 'loading') setText(`Thinking on device… ${view.field.label}`)
           else if (view.status === 'ready') setText(view.answer.data.explanation)
@@ -151,12 +152,33 @@ describe('field request with a LanguageModel session', () => {
       (requests) => {
         requests.start(field, 'only-device')
       },
-      30,
+      { firstTokenMs: 30 },
     )
     await flush(10)
     expect(view.text()).toContain('Thinking on device…')
     await flush(40)
     expect(view.text()).toBe(DEVICE_TIMEOUT_MESSAGE)
+    view.unmount()
+  })
+
+  it('does not time out a stream that keeps producing tokens', async () => {
+    const explainField: FormModel['explainField'] = async (_field, _mode, options) => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      options?.onActivity?.('token')
+      options?.onPartial?.('A tax year')
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      options?.onActivity?.('token')
+      return { data: parseFieldExplanation(ANSWER), source: 'ON_DEVICE' }
+    }
+    const view = mount(
+      explainField,
+      (requests) => {
+        requests.start(field, 'only-device')
+      },
+      { firstTokenMs: 30, gapMs: 80 },
+    )
+    await flush(90)
+    expect(view.text()).toBe('A tax year is the period this form covers.')
     view.unmount()
   })
 

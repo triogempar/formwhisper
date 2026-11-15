@@ -36,4 +36,18 @@ describe('schema parsing', () => {
     expect(parseScan(JSON.stringify(scan)).fields.length).toBeGreaterThan(0)
     expect(() => parseChecklist('{"formTitle":"x"}')).toThrow(ParseError)
   })
+
+  it('strips markup from mistakes and drops empty items', () => {
+    const text = JSON.stringify({
+      semanticType: 'phone',
+      explanation: 'The desk line for the card.',
+      whyAsked: 'So the bank can call.',
+      commonMistakes: ['<<br>', 'Use the number on the back of the card', 'Use the number on the back of the card', 'ok', '<b>Skip the extension</b>'],
+      sensitivity: 'ordinary',
+    })
+    expect(parseFieldExplanation(text).commonMistakes).toEqual([
+      'Use the number on the back of the card',
+      'Skip the extension',
+    ])
+  })
 })

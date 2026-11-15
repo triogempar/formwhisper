@@ -10,14 +10,10 @@ const RULES = [
 
 export function buildFieldPrompt(field: FieldContext): string {
   return [
-    'Plain English. Do not invent personal data. semanticType must be one of the enum values, or other.',
-    'explanation: one short sentence. whyAsked: one sentence. commonMistakes: at most 3 short items.',
-    `Label: ${clip(field.label || '(no label)', 120)}`,
-    `Type: ${field.inputType}; required=${field.required ? 'yes' : 'no'}`,
-    field.helpText ? `Help: ${clip(field.helpText, 140)}` : '',
-    field.legend ? `Section: ${clip(field.legend, 80)}` : '',
-    field.placeholder ? `Placeholder: ${clip(field.placeholder, 80)}` : '',
-    field.options.length ? `Options: ${field.options.slice(0, 6).map((option) => clip(option, 40)).join(' | ')}` : '',
+    `Label: ${clip(field.label || '(no label)', 80)}`,
+    `Type: ${field.inputType}${field.required ? ', required' : ''}`,
+    field.helpText ? `Help: ${clip(field.helpText, 80)}` : '',
+    'JSON only. One short explanation, one short whyAsked, at most 3 commonMistakes. No personal data.',
   ]
     .filter(Boolean)
     .join('\n')

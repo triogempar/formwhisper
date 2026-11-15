@@ -44,14 +44,47 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+/** Drop tags and entities so model text is shown as words, not markup. */
+export function plainText(value: string): string {
+  const withoutTags = value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => {
+      const point = Number(code)
+      return Number.isFinite(point) ? String.fromCodePoint(point) : ''
+    })
+  return withoutTags.replace(/\s+/g, ' ').trim()
+}
+
 function asString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new ParseError(`${label} was empty.`)
-  return value.trim()
+  if (typeof value !== 'string') throw new ParseError(`${label} was empty.`)
+  const text = plainText(value)
+  if (!text) throw new ParseError(`${label} was empty.`)
+  return text
 }
 
 function asStringList(value: unknown, label: string, max: number): string[] {
   if (!Array.isArray(value)) throw new ParseError(`${label} was not a list.`)
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()).slice(0, max)
+  const seen = new Set<string>()
+  const items: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const text = plainText(item)
+    const letters = text.replace(/[^a-z]/gi, '')
+    if (letters.length < 3) continue
+    const key = text.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(text)
+    if (items.length >= max) break
+  }
+  return items
 }
 
 function asBool(value: unknown, fallback: boolean): boolean {
