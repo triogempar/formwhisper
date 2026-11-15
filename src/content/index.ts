@@ -1,5 +1,5 @@
 import { extractForm } from '../lib/extract'
-import { applyFill, findField } from '../lib/fill'
+import { applyFill, findField, revealField } from '../lib/fill'
 import { watchFields } from './watch'
 
 watchFields((field) => {
@@ -8,9 +8,11 @@ watchFields((field) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'formwhisper-page') return
-  if (message.type === 'FILL') {
+  if (message.type === 'FILL' || message.type === 'REVEAL') {
     const el = findField(document, String(message.fieldId ?? ''))
-    sendResponse({ ok: !!el && applyFill(el, String(message.value ?? '')) })
+    const filled = message.type === 'FILL' && !!el && applyFill(el, String(message.value ?? ''))
+    if (el) revealField(el)
+    sendResponse({ ok: message.type === 'REVEAL' ? !!el : filled })
     return true
   }
   if (message.type === 'SCAN') {

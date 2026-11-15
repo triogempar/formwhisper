@@ -8,28 +8,19 @@ const RULES = [
   'Choose semanticType only from the schema enum. Use other when none fit.',
 ].join(' ')
 
-function fieldBlock(field: FieldContext): string {
-  const lines = [
-    `Label: ${clip(field.label || '(no label)', 200)}`,
-    `Control: ${field.tag} ${field.inputType}`,
-    `Name attribute: ${clip(field.name || '(none)', 80)}`,
-    `Required: ${field.required ? 'yes' : 'no'}`,
-    `Autocomplete hint: ${clip(field.autocomplete || '(none)', 80)}`,
-    `Placeholder: ${clip(field.placeholder || '(none)', 160)}`,
-    `Help text: ${clip(field.helpText || '(none)', 400)}`,
-    `Section legend: ${clip(field.legend || '(none)', 200)}`,
-    `Surrounding text: ${clip(field.nearbyText || '(none)', 280)}`,
-  ]
-  if (field.options.length) lines.push(`Options: ${field.options.map((option) => clip(option, 60)).join(' | ')}`)
-  return lines.join('\n')
-}
-
 export function buildFieldPrompt(field: FieldContext): string {
   return [
-    RULES,
-    'Describe this single field: what it means, why it is asked, and up to three common mistakes.',
-    fieldBlock(field),
-  ].join('\n\n')
+    'Plain English. Do not invent personal data. semanticType must be one of the enum values, or other.',
+    'explanation: one short sentence. whyAsked: one sentence. commonMistakes: at most 3 short items.',
+    `Label: ${clip(field.label || '(no label)', 120)}`,
+    `Type: ${field.inputType}; required=${field.required ? 'yes' : 'no'}`,
+    field.helpText ? `Help: ${clip(field.helpText, 140)}` : '',
+    field.legend ? `Section: ${clip(field.legend, 80)}` : '',
+    field.placeholder ? `Placeholder: ${clip(field.placeholder, 80)}` : '',
+    field.options.length ? `Options: ${field.options.slice(0, 6).map((option) => clip(option, 40)).join(' | ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function buildChecklistPrompt(fields: FieldContext[], title: string): string {

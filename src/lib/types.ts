@@ -39,6 +39,7 @@ export type FieldContext = {
   required: boolean
   autocomplete: string
   options: string[]
+  origin?: string
 }
 
 export type FieldExplanation = {

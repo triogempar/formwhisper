@@ -12,8 +12,8 @@ import {
 } from 'firebase/ai'
 import type { FwConfig } from './config'
 import { DEFAULT_CLOUD_MODEL } from './config'
-import type { FormModel } from './model'
-import { parseChecklist, parseFieldExplanation, parseScan } from './parse'
+import type { ExplainOptions, FormModel } from './model'
+import { parseChecklist, parseFieldExplanation, parseScan, partialExplanation } from './parse'
 import { buildChecklistPrompt, buildFieldPrompt, buildScanPrompt } from './prompts'
 import { checklistJsonSchema, fieldJsonSchema, scanJsonSchema } from './schemas'
 import { SEMANTIC_TYPES, type InferenceBadge, type RunMode } from './types'
@@ -181,7 +181,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
         model: config.cloudModel || DEFAULT_CLOUD_MODEL,
         systemInstruction: SYSTEM,
         generationConfig: {
-          maxOutputTokens: kind === 'field' ? 768 : 2048,
+          maxOutputTokens: kind === 'field' ? 256 : 2048,
           responseMimeType: 'application/json',
           responseSchema: schemaFor(kind),
         },
@@ -211,9 +211,36 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
 
   return {
     kind: 'hybrid',
-    async explainField(field, mode) {
+    async explainField(field, mode, options?: ExplainOptions) {
       await ensureFirebase(config, storedToken)
-      const result = await modelFor(mode, 'field').generateContent(buildFieldPrompt(field))
+      const model = modelFor(mode, 'field')
+      const prompt = buildFieldPrompt(field)
+      if (typeof model.generateContentStream === 'function') {
+        try {
+          const streaming = await model.generateContentStream(prompt, { signal: options?.signal })
+          let buffer = ''
+          for await (const chunk of streaming.stream) {
+            if (options?.signal?.aborted) {
+              throw new DOMException('The request was cancelled.', 'AbortError')
+            }
+            try {
+              buffer += chunk.text()
+            } catch {
+              continue
+            }
+            const partial = partialExplanation(buffer)
+            if (partial) options?.onPartial?.(partial)
+          }
+          const finalResponse = await streaming.response
+          return {
+            data: parseFieldExplanation(finalResponse.text() || buffer),
+            source: badgeFrom(finalResponse.inferenceSource),
+          }
+        } catch (error) {
+          if (options?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
+        }
+      }
+      const result = await model.generateContent(prompt, { signal: options?.signal })
       return {
         data: parseFieldExplanation(result.response.text()),
         source: badgeFrom(result.response.inferenceSource),

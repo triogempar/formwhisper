@@ -1,6 +1,17 @@
 import type { Checklist, FieldExplanation, PageScan, SemanticType, Sensitivity } from './types'
 import { isSemanticType } from './text'
 
+/** Pull a growing explanation string out of a partial JSON stream. */
+export function partialExplanation(buffer: string): string | null {
+  const match = buffer.match(/"explanation"\s*:\s*"((?:\\.|[^"\\])*)/)
+  if (!match) return null
+  try {
+    return JSON.parse(`"${match[1]}"`) as string
+  } catch {
+    return match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ')
+  }
+}
+
 export class ParseError extends Error {
   constructor(message: string) {
     super(message)

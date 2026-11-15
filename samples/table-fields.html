@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Table field fixture</title>
+    <style>
+      body { margin: 24px; background: #fff; color: #202124; font: 14px/20px system-ui, sans-serif; }
+      table { border-collapse: collapse; width: min(640px, 100%); }
+      td { border: 1px solid #dadce0; padding: 8px 10px; vertical-align: middle; }
+      input, select { width: 100%; box-sizing: border-box; height: 32px; }
+      caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <form>
+      <table>
+        <caption>Label beside the box</caption>
+        <tr>
+          <td>Title</td>
+          <td><input name="01__title" id="01__title"></td>
+        </tr>
+        <tr>
+          <td>First Name</td>
+          <td><input name="02firstname" id="first-name"></td>
+        </tr>
+        <tr>
+          <td>Last Name</td>
+          <td><input name="03lastname" id="last-name"></td>
+        </tr>
+        <tr>
+          <td>Fax phone</td>
+          <td><input name="22faxphone" id="fax"></td>
+        </tr>
+        <tr>
+          <td>Email address</td>
+          <td><input name="email" id="email" type="email" autocomplete="email"></td>
+        </tr>
+      </table>
+    </form>
+    <p>Local fixture for fields whose label sits in the table cell to the left. Not a copy of any vendor’s test page.</p>
+    <script type="module" src="/src/content/page-bridge.ts"></script>
+  </body>
+</html>

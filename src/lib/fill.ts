@@ -37,3 +37,10 @@ export function applyFill(el: Element, value: string): boolean {
   el.dispatchEvent(new Event('change', { bubbles: true }))
   return true
 }
+
+/** Move the page to a field only after an explicit Fill or list click. */
+export function revealField(el: Element): void {
+  if (!(el instanceof HTMLElement)) return
+  el.scrollIntoView({ block: 'center', inline: 'nearest' })
+  el.focus()
+}

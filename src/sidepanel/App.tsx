@@ -5,6 +5,7 @@ import { isStoredVault, openProfile, plaintextVault, sealProfile, type StoredVau
 import { EMPTY_LEDGER, normalizeLedger, recordInference, type Ledger } from '../lib/ledger'
 import { matchVault } from '../lib/match'
 import type { FormModel } from '../lib/model'
+import { readExplanationCache, writeExplanationCache } from '../lib/explanation-cache'
 import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
 import { createKv, STORAGE_KEYS } from '../lib/store'
@@ -26,7 +27,7 @@ type Consent =
 
 type FieldView =
   | { status: 'idle' }
-  | { status: 'loading'; field: FieldContext }
+  | { status: 'loading'; field: FieldContext; partial?: string }
   | { status: 'wait'; field: FieldContext }
   | { status: 'blocked'; field: FieldContext }
   | { status: 'ready'; field: FieldContext; answer: ModelAnswer<import('../lib/types').FieldExplanation>; match: VaultMatch | null }
@@ -86,6 +87,7 @@ export function App() {
   const [showSetup, setShowSetup] = useState(false)
   const [fieldView, setFieldView] = useState<FieldView>({ status: 'idle' })
   const [checklist, setChecklist] = useState<ModelAnswer<Checklist> | null>(null)
+  const [scannedFields, setScannedFields] = useState<FieldContext[]>([])
   const [scan, setScan] = useState<ModelAnswer<PageScan> | null>(null)
   const [shot, setShot] = useState<string | null>(null)
   const [consent, setConsent] = useState<Consent | null>(null)
@@ -96,6 +98,7 @@ export function App() {
   const [tokenDraft, setTokenDraft] = useState('')
   const [live, setLive] = useState('')
   const ticket = useRef(0)
+  const explainAbort = useRef<AbortController | null>(null)
   const declineRef = useRef<HTMLButtonElement>(null)
   const latest = useRef({ settings, profile, readiness, model, vault, ledger })
   latest.current = { settings, profile, readiness, model, vault, ledger }
@@ -165,18 +168,36 @@ export function App() {
   async function explain(field: FieldContext, mode: RunMode) {
     const current = latest.current.model
     if (!current) return
+    explainAbort.current?.abort()
+    const controller = new AbortController()
+    explainAbort.current = controller
     const id = ++ticket.current
+    const cached = readExplanationCache(field)
+    if (cached) {
+      const match = matchVault(cached.data.semanticType, latest.current.profile)
+      setFieldView({ status: 'ready', field, answer: cached, match })
+      setLive(cached.data.explanation)
+      return
+    }
     setFieldView({ status: 'loading', field })
-    setLive(t('loading'))
+    setLive(t('thinking'))
     try {
-      const answer = await current.explainField(field, mode)
-      if (id !== ticket.current) return
+      const answer = await current.explainField(field, mode, {
+        signal: controller.signal,
+        onPartial: (partial) => {
+          if (id !== ticket.current || controller.signal.aborted) return
+          setFieldView({ status: 'loading', field, partial })
+        },
+      })
+      if (id !== ticket.current || controller.signal.aborted) return
+      writeExplanationCache(field, answer)
       const match = matchVault(answer.data.semanticType, latest.current.profile)
       setFieldView({ status: 'ready', field, answer, match })
       setLive(answer.data.explanation)
       await remember(answer.source)
     } catch (error) {
-      if (id !== ticket.current) return
+      if (id !== ticket.current || controller.signal.aborted) return
+      if (error instanceof DOMException && error.name === 'AbortError') return
       const message = error instanceof Error ? error.message : 'The request failed.'
       setFieldView({ status: 'error', field, message })
       setLive(message)
@@ -250,6 +271,7 @@ export function App() {
     if (!model) return
     try {
       const scanned = await transport.scan()
+      setScannedFields(scanned.fields)
       const choice = decide(settings, readiness, model.kind)
       if (choice === 'need-consent') {
         setConsent({ kind: 'page', title: scanned.title, fields: scanned.fields })
@@ -416,6 +438,8 @@ export function App() {
             notice={notice}
             onReadPage={() => void onReadPage()}
             onReadVisible={onReadVisible}
+            scannedFields={scannedFields}
+            onReveal={(fieldId) => void transport.reveal(fieldId)}
           />
         ) : null}
         {model && !setupOpen && view === 'vault' ? (
@@ -504,6 +528,17 @@ export function App() {
   )
 }
 
+function ThinkingLine({ active, label }: { active: boolean; label: string }) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!active) return
+    const start = Date.now()
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [active])
+  return <p className="quiet">{active ? `${label} ${elapsed}s` : label}</p>
+}
+
 function FieldBody({
   view,
   t,
@@ -526,8 +561,9 @@ function FieldBody({
   if (view.status === 'loading' || view.status === 'wait') {
     return (
       <section className="pad">
-        <h2>{view.field.label || view.field.name}</h2>
-        <p className="quiet">{view.status === 'wait' ? t('waiting') : t('loading')}</p>
+        <h2>{view.field.label || view.field.name || 'Field'}</h2>
+        {view.status === 'loading' && view.partial ? <p className="meaning">{view.partial}</p> : <div className="skeleton" />}
+        <ThinkingLine active={view.status === 'loading'} label={view.status === 'wait' ? t('waiting') : t('thinking')} />
       </section>
     )
   }
@@ -555,9 +591,9 @@ function FieldBody({
         <p className="meaning">{answer.data.explanation}</p>
         <p className="meta">
           <span>{field.required ? t('required') : t('optional')}</span>
+          <span aria-hidden="true">·</span>
           <span>{answer.data.sensitivity === 'identity' ? t('identity') : t('ordinary')}</span>
         </p>
-        <SourceChip source={answer.source} />
       </div>
       <details open>
         <summary>{t('whyAsked')}</summary>
@@ -600,6 +636,8 @@ function PageBody({
   notice,
   onReadPage,
   onReadVisible,
+  scannedFields,
+  onReveal,
 }: {
   t: (key: CopyKey) => string
   checklist: ModelAnswer<Checklist> | null
@@ -608,6 +646,8 @@ function PageBody({
   notice: string
   onReadPage: () => void
   onReadVisible: () => void
+  scannedFields: FieldContext[]
+  onReveal: (fieldId: string) => void
 }) {
   return (
     <section>
@@ -629,14 +669,23 @@ function PageBody({
             <h2>{checklist.data.formTitle}</h2>
             <p>{checklist.data.summary}</p>
           </div>
-          {checklist.data.items.map((item) => (
-            <div className="item" key={`${item.label}-${item.plainMeaning.slice(0, 24)}`}>
-              <h3>
-                {item.label} {item.required ? <span className="quiet"> · {t('required')}</span> : null}
-              </h3>
-              <p>{item.plainMeaning}</p>
-            </div>
-          ))}
+          {checklist.data.items.map((item, index) => {
+            const sourceField = scannedFields.find((field) => field.label === item.label) || scannedFields[index]
+            const body = (
+              <>
+                <h3>
+                  {item.label} {item.required ? <span className="quiet"> · {t('required')}</span> : null}
+                </h3>
+                <p>{item.plainMeaning}</p>
+              </>
+            )
+            if (!sourceField) return <div className="item" key={`${item.label}-${index}`}>{body}</div>
+            return (
+              <button className="item item-btn" type="button" key={sourceField.fieldId} onClick={() => onReveal(sourceField.fieldId)}>
+                {body}
+              </button>
+            )
+          })}
           <h3 className="group">{t('documents')}</h3>
           <ul>
             {checklist.data.documentsToGather.map((item) => (

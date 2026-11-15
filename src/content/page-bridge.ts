@@ -1,5 +1,5 @@
 import { extractForm } from '../lib/extract'
-import { applyFill, findField } from '../lib/fill'
+import { applyFill, findField, revealField } from '../lib/fill'
 import { watchFields } from './watch'
 
 if (window.parent !== window) {
@@ -11,9 +11,10 @@ if (window.parent !== window) {
     if (event.source !== window.parent) return
     const data = event.data as { source?: string; type?: string; fieldId?: string; value?: string; requestId?: string }
     if (data?.source !== 'formwhisper-panel') return
-    if (data.type === 'FILL') {
+    if (data.type === 'FILL' || data.type === 'REVEAL') {
       const el = findField(document, data.fieldId || '')
-      const ok = !!el && applyFill(el, data.value || '')
+      const ok = data.type === 'REVEAL' ? !!el : !!el && applyFill(el, data.value || '')
+      if (el) revealField(el)
       window.parent.postMessage({ source: 'formwhisper-page', type: 'FILLED', requestId: data.requestId, ok }, '*')
     }
     if (data.type === 'SCAN') {

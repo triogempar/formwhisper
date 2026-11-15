@@ -5,6 +5,7 @@ export type FieldHandler = (field: FieldContext) => void
 export type PanelTransport = {
   listen(handler: FieldHandler): () => void
   fill(fieldId: string, value: string): Promise<boolean>
+  reveal(fieldId: string): Promise<void>
   scan(): Promise<{ title: string; fields: FieldContext[] }>
   capture(): Promise<string | null>
 }
@@ -13,6 +14,27 @@ function frameWindow(): Window | null {
   const frame = document.getElementById('fw-form-frame')
   if (!(frame instanceof HTMLIFrameElement)) return null
   return frame.contentWindow
+}
+
+function postToFrame(fieldId: string, value: string, type: 'FILL' | 'REVEAL'): Promise<boolean> {
+  const child = frameWindow()
+  if (!child) return Promise.resolve(false)
+  const requestId = crypto.randomUUID()
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      window.removeEventListener('message', onMessage)
+      resolve(false)
+    }, 2000)
+    function onMessage(event: MessageEvent) {
+      const data = event.data as { source?: string; type?: string; requestId?: string; ok?: boolean }
+      if (data?.source !== 'formwhisper-page' || data.type !== 'FILLED' || data.requestId !== requestId) return
+      window.clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      resolve(Boolean(data.ok))
+    }
+    window.addEventListener('message', onMessage)
+    child.postMessage({ source: 'formwhisper-panel', type, fieldId, value, requestId }, '*')
+  })
 }
 
 function previewTransport(): PanelTransport {
@@ -27,24 +49,10 @@ function previewTransport(): PanelTransport {
       return () => window.removeEventListener('message', onMessage)
     },
     fill(fieldId, value) {
-      const child = frameWindow()
-      if (!child) return Promise.resolve(false)
-      const requestId = crypto.randomUUID()
-      return new Promise((resolve) => {
-        const timer = window.setTimeout(() => {
-          window.removeEventListener('message', onMessage)
-          resolve(false)
-        }, 2000)
-        function onMessage(event: MessageEvent) {
-          const data = event.data as { source?: string; type?: string; requestId?: string; ok?: boolean }
-          if (data?.source !== 'formwhisper-page' || data.type !== 'FILLED' || data.requestId !== requestId) return
-          window.clearTimeout(timer)
-          window.removeEventListener('message', onMessage)
-          resolve(Boolean(data.ok))
-        }
-        window.addEventListener('message', onMessage)
-        child.postMessage({ source: 'formwhisper-panel', type: 'FILL', fieldId, value, requestId }, '*')
-      })
+      return postToFrame(fieldId, value, 'FILL')
+    },
+    reveal(fieldId) {
+      return postToFrame(fieldId, '', 'REVEAL').then(() => undefined)
     },
     scan() {
       const child = frameWindow()
@@ -104,6 +112,14 @@ function extensionTransport(): PanelTransport {
         value,
       })) as { ok?: boolean } | undefined
       return Boolean(response?.ok)
+    },
+    async reveal(fieldId) {
+      const tabId = await activeTabId()
+      await chrome.tabs.sendMessage(tabId, {
+        target: 'formwhisper-page',
+        type: 'REVEAL',
+        fieldId,
+      })
     },
     async scan() {
       const tabId = await activeTabId()
