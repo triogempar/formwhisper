@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lumen Mutual — personal account worksheet</title>
+    <style>
+      body { margin: 0; background: #efeae2; color: #1b1b1b; font: 15px/1.45 "Palatino Linotype", Palatino, serif; }
+      main { max-width: 780px; margin: 28px auto; background: #fbfaf6; padding: 32px 36px 56px; border-top: 8px solid #1d4e45; }
+      .mast { display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid #1d4e45; }
+      h1 { margin: 0 0 8px; font-size: 26px; font-weight: 500; }
+      .no { font: 12px/1.3 ui-monospace, monospace; letter-spacing: 0.08em; color: #1d4e45; }
+      fieldset { border: 0; margin: 18px 0; padding: 0; }
+      legend { font-variant: small-caps; letter-spacing: 0.08em; padding: 0; }
+      label { display: block; margin: 12px 0; font-size: 14px; }
+      input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #1b1b1b; background: white; font: inherit; padding: 8px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+      small { display: block; margin-top: 4px; color: #333; }
+      footer { font: 12px/1.4 ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mast">
+        <h1>Personal account opening</h1>
+        <p class="no">LUMEN MUTUAL<br />KYC WORKSHEET · SPECIMEN</p>
+      </div>
+      <p>Fictional bank. This worksheet is for the Formwhisper demo and does not open an account.</p>
+      <form>
+        <fieldset>
+          <legend>Customer</legend>
+          <div class="grid">
+            <label>Legal name <input name="legalName" autocomplete="name" required aria-describedby="name-help" /><small id="name-help">Match the identity document you will show the branch.</small></label>
+            <label>Date of birth <input name="dob" type="date" autocomplete="bday" required /></label>
+            <label>Email <input name="email" type="email" autocomplete="email" required /></label>
+            <label>Mobile phone <input name="phone" type="tel" autocomplete="tel" required /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Where you live</legend>
+          <label>Residential street <input name="street" autocomplete="address-line1" required /></label>
+          <div class="grid">
+            <label>City <input name="city" autocomplete="address-level2" required /></label>
+            <label>Region <input name="region" autocomplete="address-level1" required /></label>
+            <label>Postal code <input name="postal" autocomplete="postal-code" required /></label>
+            <label>Country of residence <input name="country" autocomplete="country-name" required /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Identity and work</legend>
+          <div class="grid">
+            <label>Nationality <input name="nationality" autocomplete="country-name" required aria-describedby="nat-help" /><small id="nat-help">The citizenship in the passport you will show. Not the country where you live, unless they are the same.</small></label>
+            <label>National ID number <input name="nationalId" required aria-describedby="id-help" /><small id="id-help">The personal number on the card, not the card’s serial number.</small></label>
+            <label>Occupation <input name="occupation" autocomplete="organization-title" required /></label>
+            <label>Employer <input name="employer" autocomplete="organization" /></label>
+          </div>
+          <label>
+            Source of funds
+            <select name="funds" required>
+              <option value="">Choose one</option>
+              <option>Salary</option>
+              <option>Self-employment</option>
+              <option>Pension</option>
+              <option>Savings already held</option>
+            </select>
+          </label>
+          <label>
+            What the account is for
+            <textarea name="purpose" rows="3" required aria-describedby="purpose-help"></textarea>
+            <small id="purpose-help">A sentence is enough. Do not paste an account number.</small>
+          </label>
+        </fieldset>
+      </form>
+      <footer>Lumen Mutual is fictional. No application is submitted from this page.</footer>
+    </main>
+    <script type="module" src="/src/content/page-bridge.ts"></script>
+  </body>
+</html>

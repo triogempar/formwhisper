@@ -1,0 +1,44 @@
+{
+  "name": "formwhisper",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Chrome side panel that explains difficult forms on-device and fills them from a local vault.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --mode preview --host 127.0.0.1 --port 43123 --strictPort",
+    "dev:ext": "vite --mode extension --host 127.0.0.1 --port 43123 --strictPort",
+    "build": "vite build --mode extension",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "icons": "node scripts/make-icons.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "@fontsource/fraunces": "^5.2.9",
+    "@fontsource/source-sans-3": "^5.2.8",
+    "firebase": "^13.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "2.0.0-beta.32",
+    "@eslint/js": "^9.39.1",
+    "@types/chrome": "^0.1.24",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.4.0",
+    "happy-dom": "^20.0.10",
+    "playwright": "^1.65.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^6.4.6",
+    "vitest": "^3.2.4"
+  }
+}

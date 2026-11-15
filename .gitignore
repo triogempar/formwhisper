@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-preview/
+.env
+.env.local
+.env.*.local
+config/firebase.config.json
+.firebase/
+*.log
+playwright-report/
+test-results/
+.DS_Store
+coverage/

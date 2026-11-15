@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Republic of Alder — short-stay visa specimen</title>
+    <style>
+      body { margin: 0; background: #ddd6c8; color: #1a1a1a; font: 15px/1.4 "Times New Roman", Times, serif; }
+      main { max-width: 800px; margin: 24px auto 48px; background: #f7f3ea; padding: 28px 32px 40px; }
+      header { display: flex; justify-content: space-between; border-bottom: 2px solid #1a1a1a; }
+      h1 { margin: 8px 0; font-size: 24px; font-weight: 500; }
+      .mark { font: 700 13px/1.2 ui-monospace, monospace; color: #8e1e24; letter-spacing: 0.12em; }
+      fieldset { border: 1px solid #1a1a1a; margin: 14px 0; }
+      label { display: block; margin: 8px 0; }
+      input, select { width: 100%; box-sizing: border-box; border: 1px solid #1a1a1a; background: white; font: inherit; padding: 6px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+      .scan {
+        margin-top: 8px;
+        background:
+          repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(26,26,26,0.08) 28px),
+          #efe6d4;
+        border: 1px dashed #6d6456;
+        min-height: 220px;
+        padding: 16px;
+        transform: rotate(-0.4deg);
+        position: relative;
+      }
+      .scan h2 { margin: 0 0 8px; font: 13px/1 ui-monospace, monospace; letter-spacing: 0.08em; }
+      .stamp {
+        position: absolute;
+        right: 28px;
+        bottom: 24px;
+        width: 110px;
+        height: 110px;
+        border: 4px solid rgba(142, 30, 36, 0.8);
+        border-radius: 50%;
+        color: rgba(142, 30, 36, 0.85);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font: 700 12px/1.1 ui-monospace, monospace;
+        transform: rotate(-12deg);
+      }
+      .boxes { font: 14px/1.8 ui-monospace, monospace; letter-spacing: 0.2em; }
+      footer { font: 12px/1.4 ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>CONSULAR SECTION<br />REPUBLIC OF ALDER</p>
+        <p class="mark">SPECIMEN<br />VA-12</p>
+      </header>
+      <h1>Short-stay visa application</h1>
+      <p>Fictional consulate. The stamp panel below is a picture, not a set of inputs.</p>
+      <form>
+        <fieldset>
+          <legend>Passport</legend>
+          <div class="grid">
+            <label>Full name as in the passport <input name="passportName" autocomplete="name" required aria-describedby="pn-help" /><small id="pn-help">Copy the photograph page, including middle names.</small></label>
+            <label>Date of birth <input name="dob" type="date" autocomplete="bday" required /></label>
+            <label>Passport number <input name="passportNumber" required aria-describedby="pass-help" /><small id="pass-help">The number on the photograph page, not the number on an entry stamp.</small></label>
+            <label>Nationality <input name="nationality" required /></label>
+            <label>Passport expiry <input name="expiry" type="date" required aria-describedby="exp-help" /><small id="exp-help">Must be valid for the whole stay. Formwhisper does not store expiry dates.</small></label>
+            <label>
+              Purpose of travel
+              <select name="purpose" required>
+                <option value="">Choose one</option>
+                <option>Tourism</option>
+                <option>Family visit</option>
+                <option>Short business meeting</option>
+                <option>Conference</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+      </form>
+      <section class="scan" aria-label="Scanned previous stamp">
+        <h2>PREVIOUS ENTRY STAMP — SCAN</h2>
+        <p class="boxes">ALDER &nbsp; 14 MAR 2024<br />PORT MERIDIAN<br />□□□□□□□□</p>
+        <div class="stamp">SEEN<br />SPECIMEN<br />NOT A VISA</div>
+      </section>
+      <footer>The Republic of Alder is fictional. This page is a demo for screenshot mode.</footer>
+    </main>
+    <script type="module" src="/src/content/page-bridge.ts"></script>
+  </body>
+</html>
