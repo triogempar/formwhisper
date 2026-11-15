@@ -10,6 +10,7 @@ import { createKv, STORAGE_KEYS } from '../lib/store'
 import type { Checklist, FieldContext, ModelAnswer, PageScan, Profile, RunMode, VaultMatch } from '../lib/types'
 import { demoProfile, emptyProfile, normalizeProfile, VAULT_GROUPS, VAULT_LABELS } from '../lib/vault'
 import { translate, type CopyKey, type Locale } from './copy'
+import { CloudIcon, InfoIcon, LaptopIcon } from './icons'
 import { createTransport } from './transport'
 import './styles.css'
 
@@ -56,14 +57,16 @@ function statusKey(state: ModelReadiness['state']): CopyKey {
   return 'statusChecking'
 }
 
-function Seal() {
+function SourceChip({ source }: { source: ModelAnswer<unknown>['source'] }) {
+  if (source === 'PREVIEW') return null
+  const cloud = source === 'IN_CLOUD'
   return (
-    <svg className="seal" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="6" y="8" width="46" height="50" fill="#f4f0e6" stroke="#1a2330" strokeWidth="2" />
-      <path d="M40 8h12v12H40z" fill="#e7e0d2" stroke="#1a2330" strokeWidth="2" />
-      <path d="M14 28h22M14 36h18M14 44h16" stroke="#1a2330" strokeWidth="2" />
-      <circle cx="46" cy="46" r="8" fill="#8e1e24" />
-    </svg>
+    <p className="meta">
+      <span className="chip">
+        {cloud ? <CloudIcon /> : <LaptopIcon />}
+        {cloud ? 'Cloud' : 'On device'}
+      </span>
+    </p>
   )
 }
 
@@ -320,13 +323,18 @@ export function App() {
   return (
     <div className="shell">
       <header className="mast">
-        <div>
-          <p className="kicker">{t('kicker')}</p>
-          <h1 className="word">Formwhisper</h1>
-          <p className="status">{t(statusKey(readiness.state))}</p>
-        </div>
-        <Seal />
+        <h1 className="word">Formwhisper</h1>
+        <p className="status">
+          <LaptopIcon />
+          {t(statusKey(readiness.state))}
+        </p>
       </header>
+      {model?.kind === 'mock' ? (
+        <div className="banner" role="status">
+          <InfoIcon />
+          <span>{t('previewBanner')}</span>
+        </div>
+      ) : null}
       <nav className="tabs" aria-label="Formwhisper">
         {(['field', 'page', 'vault', 'settings'] as const).map((id) => (
           <button key={id} type="button" aria-selected={view === id} onClick={() => setView(id)}>
@@ -339,10 +347,10 @@ export function App() {
         {bootError ? <p className="error" role="alert">{bootError}</p> : null}
         {!model && !bootError ? <p>{t('boot')}</p> : null}
         {model && setupOpen ? (
-          <section>
+          <section className="pad">
             <h2>{t('onboardTitle')}</h2>
             <p>{t('onboardBody')}</p>
-            <h3 className="group-label">{t('flagTitle')}</h3>
+            <h3>{t('flagTitle')}</h3>
             <p>{t('flagBody')}</p>
             <p>{readiness.detail}</p>
             {progress !== null ? (
@@ -351,11 +359,11 @@ export function App() {
               </div>
             ) : null}
             <div className="actions">
-              <button className="ink" type="button" onClick={() => void onDownload()} disabled={readiness.state === 'unavailable'}>
+              <button className="btn" type="button" onClick={() => void onDownload()} disabled={readiness.state === 'unavailable'}>
                 {progress !== null ? `${t('downloading')} ${Math.round((progress || 0) * 100)}%` : t('download')}
               </button>
               <button
-                className="ghost"
+                className="btn-tonal"
                 type="button"
                 onClick={() => {
                   setShowSetup(false)
@@ -450,10 +458,10 @@ export function App() {
               {consent.kind === 'image' ? t('imageConsentBody') : consent.kind === 'page' ? t('consentPage') : t('consentBody')}
             </p>
             <div className="actions">
-              <button ref={declineRef} className="ghost" type="button" onClick={() => setConsent(null)}>
+              <button ref={declineRef} className="btn-tonal" type="button" onClick={() => setConsent(null)}>
                 {t('consentStay')}
               </button>
-              <button className="ink" type="button" onClick={() => void acceptConsent()}>
+              <button className="btn" type="button" onClick={() => void acceptConsent()}>
                 {consent.kind === 'image' ? t('consentSendImage') : consent.kind === 'page' ? t('consentSendPage') : t('consentSend')}
               </button>
             </div>
@@ -461,18 +469,12 @@ export function App() {
         ) : null}
       </main>
       <footer className="ledger">
-        <div>
-          <span>{t('ledgerDevice')}</span>
-          <strong>{ledger.onDevice}</strong>
-        </div>
-        <div>
-          <span>{t('ledgerCloud')}</span>
-          <strong>{ledger.inCloud}</strong>
-        </div>
-        <div>
-          <span>{t('ledgerPersonal')}</span>
-          <strong>{t('ledgerBytes')}</strong>
-        </div>
+        <p>
+          {ledger.onDevice} {t('ledgerDevice')} · {ledger.inCloud} {t('ledgerCloud')} · 0 {t('ledgerPersonal')}
+        </p>
+        <button className="icon-btn" type="button" title={t('ledgerTip')} aria-label={t('ledgerTip')}>
+          <InfoIcon />
+        </button>
       </footer>
     </div>
   )
@@ -491,23 +493,23 @@ function FieldBody({
 }) {
   if (view.status === 'idle') {
     return (
-      <section>
+      <section className="pad">
         <h2>{t('emptyTitle')}</h2>
-        <p>{t('emptyBody')}</p>
+        <p className="quiet">{t('emptyBody')}</p>
       </section>
     )
   }
   if (view.status === 'loading' || view.status === 'wait') {
     return (
-      <section>
+      <section className="pad">
         <h2>{view.field.label || view.field.name}</h2>
-        <p>{view.status === 'wait' ? t('waiting') : t('loading')}</p>
+        <p className="quiet">{view.status === 'wait' ? t('waiting') : t('loading')}</p>
       </section>
     )
   }
   if (view.status === 'blocked') {
     return (
-      <section>
+      <section className="pad">
         <h2>{view.field.label || view.field.name}</h2>
         <p className="error" role="alert">{t('cloudOff')}</p>
       </section>
@@ -515,44 +517,46 @@ function FieldBody({
   }
   if (view.status === 'error') {
     return (
-      <section>
+      <section className="pad">
         <h2>{view.field.label || view.field.name}</h2>
         <p className="error" role="alert">{view.message}</p>
       </section>
     )
   }
   const { answer, field, match } = view
-  const badgeClass = answer.source === 'IN_CLOUD' ? 'badge cloud' : answer.source === 'PREVIEW' ? 'badge preview' : 'badge'
   return (
-    <section className="answer">
-      <div className="row-meta">
-        <span className={badgeClass}>{answer.source === 'ON_DEVICE' ? 'ON_DEVICE' : answer.source === 'IN_CLOUD' ? 'IN_CLOUD' : 'PREVIEW'}</span>
-        <span className={field.required ? 'flag' : 'quiet'}>{field.required ? t('required') : t('optional')}</span>
-        <span className="quiet">{answer.data.sensitivity === 'identity' ? t('identity') : t('ordinary')}</span>
+    <section>
+      <div className="pad">
+        <h2>{field.label || field.name || 'Field'}</h2>
+        <p className="meaning">{answer.data.explanation}</p>
+        <p className="meta">
+          <span>{field.required ? t('required') : t('optional')}</span>
+          <span>{answer.data.sensitivity === 'identity' ? t('identity') : t('ordinary')}</span>
+        </p>
+        <SourceChip source={answer.source} />
       </div>
-      <h2>{field.label || field.name || 'Field'}</h2>
-      <p>{answer.data.explanation}</p>
-      {answer.source === 'PREVIEW' ? <p className="quiet">{t('previewNote')}</p> : null}
-      <h3>{t('whyAsked')}</h3>
-      <p>{answer.data.whyAsked}</p>
+      <details open>
+        <summary>{t('whyAsked')}</summary>
+        <p>{answer.data.whyAsked}</p>
+      </details>
       {answer.data.commonMistakes.length ? (
-        <>
-          <h3>{t('mistakes')}</h3>
+        <details open>
+          <summary>{t('mistakes')}</summary>
           <ul>
             {answer.data.commonMistakes.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-        </>
+        </details>
       ) : null}
       <div className="suggest">
-        <h3>{t('suggested')}</h3>
         {match ? (
           <>
-            <p>
-              {VAULT_LABELS[match.key]} <strong>{match.value}</strong>
-            </p>
-            <button className="ink" type="button" onClick={() => onFill(match, field.fieldId)}>
+            <div className="value">
+              <span>{t('suggested')}</span>
+              <strong>{match.value}</strong>
+            </div>
+            <button className="btn" type="button" onClick={() => onFill(match, field.fieldId)}>
               {t('fill')}
             </button>
           </>
@@ -583,40 +587,39 @@ function PageBody({
 }) {
   return (
     <section>
-      <h2>{t('navPage')}</h2>
-      <p>{t('pageLead')}</p>
-      <div className="actions">
-        <button className="ink" type="button" onClick={onReadPage}>{t('readPage')}</button>
-        <button className="ghost" type="button" onClick={onReadVisible}>{t('readVisible')}</button>
+      <div className="pad">
+        <h2>{t('navPage')}</h2>
+        <p className="quiet">{t('pageLead')}</p>
       </div>
-      <p className="quiet">{t('scanLead')}</p>
-      {notice ? <p role="status">{notice}</p> : null}
-      {!checklist && !scan ? <p>{t('pageEmpty')}</p> : null}
+      <div className="actions">
+        <button className="btn" type="button" onClick={onReadPage}>{t('readPage')}</button>
+        <button className="btn-tonal" type="button" onClick={onReadVisible}>{t('readVisible')}</button>
+      </div>
+      <p className="quiet pad">{t('scanLead')}</p>
+      {notice ? <p className="pad" role="status">{notice}</p> : null}
+      {!checklist && !scan ? <p className="quiet pad">{t('pageEmpty')}</p> : null}
       {checklist ? (
         <article>
-          <div className="row-meta">
-            <span className={checklist.source === 'PREVIEW' ? 'badge preview' : checklist.source === 'IN_CLOUD' ? 'badge cloud' : 'badge'}>
-              {checklist.source === 'ON_DEVICE' ? 'ON_DEVICE' : checklist.source === 'IN_CLOUD' ? 'IN_CLOUD' : 'PREVIEW'}
-            </span>
+          <div className="pad">
+            <SourceChip source={checklist.source} />
+            <h2>{checklist.data.formTitle}</h2>
+            <p>{checklist.data.summary}</p>
           </div>
-          <h2>{checklist.data.formTitle}</h2>
-          <p>{checklist.data.summary}</p>
-          {checklist.source === 'PREVIEW' ? <p className="quiet">{t('previewNote')}</p> : null}
           {checklist.data.items.map((item) => (
             <div className="item" key={`${item.label}-${item.plainMeaning.slice(0, 24)}`}>
               <h3>
-                {item.label} {item.required ? <span className="flag">{t('required')}</span> : null}
+                {item.label} {item.required ? <span className="quiet"> · {t('required')}</span> : null}
               </h3>
               <p>{item.plainMeaning}</p>
             </div>
           ))}
-          <h3 className="group-label">{t('documents')}</h3>
+          <h3 className="group">{t('documents')}</h3>
           <ul>
             {checklist.data.documentsToGather.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <h3 className="group-label">{t('beforeSubmit')}</h3>
+          <h3 className="group">{t('beforeSubmit')}</h3>
           <ul>
             {checklist.data.beforeYouSubmit.map((item) => (
               <li key={item}>{item}</li>
@@ -626,15 +629,11 @@ function PageBody({
       ) : null}
       {scan ? (
         <article>
-          <hr className="rule" />
-          <div className="row-meta">
-            <span className={scan.source === 'PREVIEW' ? 'badge preview' : scan.source === 'IN_CLOUD' ? 'badge cloud' : 'badge'}>
-              {scan.source === 'ON_DEVICE' ? 'ON_DEVICE' : scan.source === 'IN_CLOUD' ? 'IN_CLOUD' : 'PREVIEW'}
-            </span>
+          <div className="pad">
+            <SourceChip source={scan.source} />
           </div>
           {shot ? <img className="thumb" alt="Visible tab" src={shot.startsWith('data:') ? shot : `data:image/jpeg;base64,${shot}`} /> : null}
-          <p>{scan.data.pageSummary}</p>
-          {scan.source === 'PREVIEW' ? <p className="quiet">{t('scanPreview')}</p> : null}
+          <p className="pad">{scan.data.pageSummary}</p>
           {scan.data.fields.map((item) => (
             <div className="item" key={item.label}>
               <h3>{item.label}</h3>
@@ -642,7 +641,7 @@ function PageBody({
               <p className="quiet">{item.commonMistake}</p>
             </div>
           ))}
-          <h3 className="group-label">{t('cautions')}</h3>
+          <h3 className="group">{t('cautions')}</h3>
           <ul>
             {scan.data.cautions.map((item) => (
               <li key={item}>{item}</li>
@@ -683,8 +682,10 @@ function VaultBody({
   const locked = Boolean(vault?.encrypted && !profile)
   return (
     <section>
-      <h2>{t('navVault')}</h2>
-      <p>{t('vaultIntro')}</p>
+      <div className="pad">
+        <h2>{t('navVault')}</h2>
+        <p className="quiet">{t('vaultIntro')}</p>
+      </div>
       {notice ? <p role="status">{notice}</p> : null}
       {locked ? (
         <form
@@ -699,14 +700,14 @@ function VaultBody({
             <span>{t('passphrase')}</span>
             <input type="password" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="current-password" />
           </label>
-          <button className="ink" type="submit">{t('unlock')}</button>
+          <button className="btn" type="submit">{t('unlock')}</button>
         </form>
       ) : (
         <>
           <p className="quiet">{t('saveNote')}</p>
           {VAULT_GROUPS.map((group) => (
             <div key={group.id}>
-              <h3 className="group-label">{t(group.id === 'identity' ? 'groupIdentity' : group.id === 'address' ? 'groupAddress' : 'groupPapers')}</h3>
+              <h3 className="group">{t(group.id === 'identity' ? 'groupIdentity' : group.id === 'address' ? 'groupAddress' : 'groupPapers')}</h3>
               {(profile ?? emptyProfile()) &&
                 group.keys.map((key) => (
                   <label className="field" key={key}>
@@ -723,10 +724,10 @@ function VaultBody({
           ))}
           <div className="actions">
             {vault?.encrypted ? (
-              <button className="ghost" type="button" onClick={onLock}>{t('lock')}</button>
+              <button className="btn-tonal" type="button" onClick={onLock}>{t('lock')}</button>
             ) : null}
-            <button className="ghost" type="button" onClick={onDemo}>{t('loadDemo')}</button>
-            <button className="texty" type="button" onClick={() => void onClear()}>{t('clearVault')}</button>
+            <button className="btn-tonal" type="button" onClick={onDemo}>{t('loadDemo')}</button>
+            <button className="btn-text" type="button" onClick={() => void onClear()}>{t('clearVault')}</button>
           </div>
           {!vault?.encrypted ? (
             <form
@@ -741,7 +742,7 @@ function VaultBody({
                 <span>{t('passphrase')}</span>
                 <input type="password" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="new-password" />
               </label>
-              <button className="ink" type="submit">{t('encrypt')}</button>
+              <button className="btn" type="submit">{t('encrypt')}</button>
             </form>
           ) : null}
         </>
@@ -776,18 +777,22 @@ function SettingsBody({
   const cloudName = model.kind === 'hybrid' ? loadConfig()?.cloudModel || 'gemini-4-hydrogen' : 'preview'
   return (
     <section>
-      <h2>{t('navSettings')}</h2>
-      <p>{model.kind === 'hybrid' ? t('providerHybrid') : t('providerMock')}</p>
-      <p className="quiet">
-        {t('cloudModel')}: {cloudName}
-      </p>
-      {notice ? <p role="status">{notice}</p> : null}
-      <label className="check">
-        <input type="checkbox" checked={settings.neverCloud} onChange={(event) => onNeverCloud(event.target.checked)} />
-        <span>
+      <div className="pad">
+        <h2>{t('navSettings')}</h2>
+        <p className="quiet">{model.kind === 'hybrid' ? t('providerHybrid') : t('providerMock')}</p>
+        <p className="quiet">
+          {t('cloudModel')}: {cloudName}
+        </p>
+      </div>
+      {notice ? <p className="pad" role="status">{notice}</p> : null}
+      <label className="row">
+        <span className="copy">
           <strong>{t('neverCloud')}</strong>
-          <br />
-          {t('neverCloudHelp')}
+          <span className="quiet">{t('neverCloudHelp')}</span>
+        </span>
+        <span className="switch">
+          <input type="checkbox" role="switch" checked={settings.neverCloud} onChange={(event) => onNeverCloud(event.target.checked)} />
+          <span className="track" />
         </span>
       </label>
       <label className="field">
@@ -804,9 +809,9 @@ function SettingsBody({
       </label>
       <p className="quiet">{t('tokenHelp')}</p>
       <div className="actions">
-        <button className="ink" type="button" onClick={() => void onSaveToken()}>{t('saveToken')}</button>
-        <button className="ghost" type="button" onClick={onSetup}>{t('reopen')}</button>
-        <button className="texty" type="button" onClick={() => window.location.reload()}>{t('reload')}</button>
+        <button className="btn" type="button" onClick={() => void onSaveToken()}>{t('saveToken')}</button>
+        <button className="btn-tonal" type="button" onClick={onSetup}>{t('reopen')}</button>
+        <button className="btn-text" type="button" onClick={() => window.location.reload()}>{t('reload')}</button>
       </div>
     </section>
   )

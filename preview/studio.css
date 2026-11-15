@@ -1,8 +1,8 @@
 html, body { height: 100%; margin: 0; }
-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; background: #d9d3c7; }
+body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; background: #e8eaed; }
 iframe { border: 0; width: 100%; height: 100%; background: white; }
-aside { min-width: 0; height: 100%; border-left: 1px solid #1a2330; overflow: hidden; }
+aside { min-width: 0; height: 100%; border-left: 1px solid #dadce0; overflow: hidden; }
 @media (max-width: 800px) {
   body { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
-  aside { border-left: 0; border-top: 1px solid #1a2330; }
+  aside { border-left: 0; border-top: 1px solid #dadce0; }
 }

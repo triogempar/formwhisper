@@ -17,8 +17,6 @@
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
-    "@fontsource/fraunces": "^5.2.9",
-    "@fontsource/source-sans-3": "^5.2.8",
     "firebase": "^13.3.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

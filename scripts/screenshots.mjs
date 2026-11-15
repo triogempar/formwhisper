@@ -31,8 +31,8 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
 })
 
-async function studio(form) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } })
+async function studio(form, colorScheme = 'light') {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 }, colorScheme })
   await page.addInitScript(
     ({ settings, vault }) => {
       localStorage.setItem('fw.settings', JSON.stringify(settings))
@@ -44,7 +44,7 @@ async function studio(form) {
     },
   )
   await page.goto(`${base}/preview/studio.html?form=${form}`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('heading', { name: 'Nothing in the margin yet' }).waitFor()
+  await page.getByRole('heading', { name: 'No field selected' }).waitFor()
   return page
 }
 
@@ -76,6 +76,13 @@ await visa.getByRole('button', { name: 'Read the visible page' }).click()
 await visa.locator('article').getByText('stamp panel').first().waitFor()
 await visa.screenshot({ path: 'docs/screenshots/visa-scan.png' })
 await visa.close()
+
+const dark = await studio('tax', 'dark')
+const darkFrame = dark.frameLocator('#fw-form-frame')
+await darkFrame.locator('#legal-name').focus()
+await dark.locator('section').getByText('identity papers').waitFor()
+await dark.screenshot({ path: 'docs/screenshots/tax-field-dark.png' })
+await dark.close()
 
 await browser.close()
 console.log('Wrote docs/screenshots')

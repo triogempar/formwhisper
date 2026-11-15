@@ -11,7 +11,7 @@ function mark(el: Element) {
 /** Report the control under the cursor or keyboard. Typed values are not included. */
 export function watchFields(onField: (field: FieldContext) => void) {
   const style = document.createElement('style')
-  style.textContent = `[${LIVE}="true"]{outline:2px solid #8e1e24;outline-offset:2px;}`
+  style.textContent = `[${LIVE}="true"]{outline:2px solid #1a73e8;outline-offset:2px;}@media (prefers-color-scheme:dark){[${LIVE}="true"]{outline-color:#8ab4f8;}}`
   document.documentElement.append(style)
 
   const emit = (target: EventTarget | null) => {

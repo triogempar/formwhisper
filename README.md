@@ -40,6 +40,8 @@ Taken in the preview studio with the local provider. The `PREVIEW` badge is inte
 
 ![Visible-page reading of the specimen visa scan](docs/screenshots/visa-scan.png)
 
+![The same field note in dark mode](docs/screenshots/tax-field-dark.png)
+
 ## Develop
 
 ```bash
