@@ -5,6 +5,7 @@ import { isStoredVault, openProfile, plaintextVault, sealProfile, type StoredVau
 import { EMPTY_LEDGER, normalizeLedger, recordInference, type Ledger } from '../lib/ledger'
 import { matchVault } from '../lib/match'
 import type { FormModel } from '../lib/model'
+import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
 import { createKv, STORAGE_KEYS } from '../lib/store'
 import type { Checklist, FieldContext, ModelAnswer, PageScan, Profile, RunMode, VaultMatch } from '../lib/types'
@@ -88,7 +89,8 @@ export function App() {
   const [scan, setScan] = useState<ModelAnswer<PageScan> | null>(null)
   const [shot, setShot] = useState<string | null>(null)
   const [consent, setConsent] = useState<Consent | null>(null)
-  const [progress, setProgress] = useState<number | null>(null)
+  const [prepare, setPrepare] = useState<DownloadState>(initialDownloadState())
+  const downloadGen = useRef(0)
   const [bootError, setBootError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [tokenDraft, setTokenDraft] = useState('')
@@ -303,19 +305,35 @@ export function App() {
     setLive(ok ? t('filled') : t('fillFailed'))
   }
 
-  async function onDownload() {
-    setProgress(0)
-    try {
-      const pending = model?.prepareDevice
-        ? model.prepareDevice((ratio) => setProgress(ratio))
-        : downloadLanguageModel((ratio) => setProgress(ratio))
-      await pending
-      setReadiness(await detectReadiness())
-      setProgress(null)
-    } catch (error) {
-      setProgress(null)
-      setNotice(error instanceof Error ? error.message : 'The download did not start.')
-    }
+  function onDownload() {
+    if (prepare.status === 'downloading') return
+    const generation = ++downloadGen.current
+    const currentModel = model
+    void driveModelDownload({
+      known: readiness.state,
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      availability: async () => (await detectReadiness()).state,
+      isCancelled: () => generation !== downloadGen.current,
+      startDownload: (onProgress) => {
+        if (currentModel?.prepareDevice) return currentModel.prepareDevice(onProgress)
+        return downloadLanguageModel(onProgress)
+      },
+      onUpdate: (next) => {
+        if (generation !== downloadGen.current) return
+        setPrepare(next)
+        if (next.status === 'ready') {
+          setReadiness({ state: 'available', detail: next.message })
+        }
+      },
+    }).catch((error: unknown) => {
+      if (generation !== downloadGen.current) return
+      setPrepare({
+        ...initialDownloadState(),
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'The download did not start.',
+      })
+    })
   }
 
   const setupOpen = showSetup || !settings.onboarded
@@ -352,15 +370,21 @@ export function App() {
             <p>{t('onboardBody')}</p>
             <h3>{t('flagTitle')}</h3>
             <p>{t('flagBody')}</p>
-            <p>{readiness.detail}</p>
-            {progress !== null ? (
-              <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
-                <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            <p>{prepare.message === STALL_DETAIL ? t('stall') : prepare.message === READY_DETAIL ? t('modelReady') : prepare.message || readiness.detail}</p>
+            {prepare.status === 'downloading' ? (
+              <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((prepare.ratio ?? 0) * 100)}>
+                <span style={{ width: `${Math.round((prepare.ratio ?? 0) * 100)}%` }} />
               </div>
             ) : null}
             <div className="actions">
-              <button className="btn" type="button" onClick={() => void onDownload()} disabled={readiness.state === 'unavailable'}>
-                {progress !== null ? `${t('downloading')} ${Math.round((progress || 0) * 100)}%` : t('download')}
+              <button className="btn" type="button" onClick={onDownload} disabled={prepare.status === 'downloading'}>
+                {prepare.status === 'downloading'
+                  ? `${t('downloading')} ${Math.round((prepare.ratio ?? 0) * 100)}%`
+                  : prepare.status === 'stalled' || prepare.status === 'failed'
+                    ? t('retry')
+                    : readiness.state === 'available' || prepare.status === 'ready'
+                      ? t('modelReady')
+                      : t('download')}
               </button>
               <button
                 className="btn-outline"
