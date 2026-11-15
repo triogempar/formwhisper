@@ -42,6 +42,8 @@ Taken in the preview studio with the local provider. The `PREVIEW` badge is inte
 
 ![The same field note in dark mode](docs/screenshots/tax-field-dark.png)
 
+Panel-only shots at 420px: [onboarding, dark](docs/screenshots/field-onboarding-dark.png), [field, dark](docs/screenshots/field-explanation-dark.png), [vault, dark](docs/screenshots/vault-dark.png), [settings, dark](docs/screenshots/settings-dark.png), [field, light](docs/screenshots/field-explanation-light.png).
+
 ## Develop
 
 ```bash

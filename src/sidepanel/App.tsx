@@ -363,7 +363,7 @@ export function App() {
                 {progress !== null ? `${t('downloading')} ${Math.round((progress || 0) * 100)}%` : t('download')}
               </button>
               <button
-                className="btn-tonal"
+                className="btn-outline"
                 type="button"
                 onClick={() => {
                   setShowSetup(false)
@@ -458,7 +458,7 @@ export function App() {
               {consent.kind === 'image' ? t('imageConsentBody') : consent.kind === 'page' ? t('consentPage') : t('consentBody')}
             </p>
             <div className="actions">
-              <button ref={declineRef} className="btn-tonal" type="button" onClick={() => setConsent(null)}>
+              <button ref={declineRef} className="btn-outline" type="button" onClick={() => setConsent(null)}>
                 {t('consentStay')}
               </button>
               <button className="btn" type="button" onClick={() => void acceptConsent()}>
@@ -593,7 +593,7 @@ function PageBody({
       </div>
       <div className="actions">
         <button className="btn" type="button" onClick={onReadPage}>{t('readPage')}</button>
-        <button className="btn-tonal" type="button" onClick={onReadVisible}>{t('readVisible')}</button>
+        <button className="btn-outline" type="button" onClick={onReadVisible}>{t('readVisible')}</button>
       </div>
       <p className="quiet pad">{t('scanLead')}</p>
       {notice ? <p className="pad" role="status">{notice}</p> : null}
@@ -684,9 +684,10 @@ function VaultBody({
     <section>
       <div className="pad">
         <h2>{t('navVault')}</h2>
-        <p className="quiet">{t('vaultIntro')}</p>
+        <p className="help">{t('vaultIntro')}</p>
+        {!locked ? <p className="help">{t('saveNote')}</p> : null}
       </div>
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? <p className="pad" role="status">{notice}</p> : null}
       {locked ? (
         <form
           className="field"
@@ -704,7 +705,6 @@ function VaultBody({
         </form>
       ) : (
         <>
-          <p className="quiet">{t('saveNote')}</p>
           {VAULT_GROUPS.map((group) => (
             <div key={group.id}>
               <h3 className="group">{t(group.id === 'identity' ? 'groupIdentity' : group.id === 'address' ? 'groupAddress' : 'groupPapers')}</h3>
@@ -724,10 +724,10 @@ function VaultBody({
           ))}
           <div className="actions">
             {vault?.encrypted ? (
-              <button className="btn-tonal" type="button" onClick={onLock}>{t('lock')}</button>
+              <button className="btn-outline" type="button" onClick={onLock}>{t('lock')}</button>
             ) : null}
-            <button className="btn-tonal" type="button" onClick={onDemo}>{t('loadDemo')}</button>
-            <button className="btn-text" type="button" onClick={() => void onClear()}>{t('clearVault')}</button>
+            <button className="btn-outline" type="button" onClick={onDemo}>{t('loadDemo')}</button>
+            <button className="btn-outline" type="button" onClick={() => void onClear()}>{t('clearVault')}</button>
           </div>
           {!vault?.encrypted ? (
             <form
@@ -737,7 +737,7 @@ function VaultBody({
                 void onEncrypt(phrase)
               }}
             >
-              <p className="quiet">{t('encryptHelp')}</p>
+              <p className="help">{t('encryptHelp')}</p>
               <label>
                 <span>{t('passphrase')}</span>
                 <input type="password" value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="new-password" />
@@ -788,7 +788,7 @@ function SettingsBody({
       <label className="row">
         <span className="copy">
           <strong>{t('neverCloud')}</strong>
-          <span className="quiet">{t('neverCloudHelp')}</span>
+          <span className="help">{t('neverCloudHelp')}</span>
         </span>
         <span className="switch">
           <input type="checkbox" role="switch" checked={settings.neverCloud} onChange={(event) => onNeverCloud(event.target.checked)} />
@@ -801,17 +801,17 @@ function SettingsBody({
           <option value="en">English</option>
           <option value="id">Bahasa Indonesia</option>
         </select>
+        <p className="help">{t('languageHelp')}</p>
       </label>
-      <p className="quiet">{t('languageHelp')}</p>
       <label className="field">
         <span>{t('token')}</span>
         <input type="password" value={tokenDraft} autoComplete="off" onChange={(event) => onToken(event.target.value)} />
+        <p className="help">{t('tokenHelp')}</p>
       </label>
-      <p className="quiet">{t('tokenHelp')}</p>
       <div className="actions">
         <button className="btn" type="button" onClick={() => void onSaveToken()}>{t('saveToken')}</button>
-        <button className="btn-tonal" type="button" onClick={onSetup}>{t('reopen')}</button>
-        <button className="btn-text" type="button" onClick={() => window.location.reload()}>{t('reload')}</button>
+        <button className="btn-outline" type="button" onClick={onSetup}>{t('reopen')}</button>
+        <button className="btn-outline" type="button" onClick={() => window.location.reload()}>{t('reload')}</button>
       </div>
     </section>
   )
