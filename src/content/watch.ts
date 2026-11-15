@@ -21,7 +21,7 @@ function controlFrom(target: EventTarget | null): Element | null {
  * Observe focus and clicks. Highlighting only sets an attribute.
  * This never calls focus(), select(), or scrollIntoView().
  */
-export function watchFields(onField: (field: FieldContext) => void) {
+export function watchFields(onField: (field: FieldContext) => void): () => void {
   const style = document.createElement('style')
   style.textContent = `[${LIVE}="true"]{outline:2px solid #1a73e8;outline-offset:2px;}@media (prefers-color-scheme:dark){[${LIVE}="true"]{outline-color:#8ab4f8;}}`
   document.documentElement.append(style)
@@ -52,16 +52,16 @@ export function watchFields(onField: (field: FieldContext) => void) {
     }, FOCUS_DEBOUNCE_MS)
   }
 
-  document.addEventListener('focusin', (event) => {
+  const onFocus = (event: Event) => {
     if (performance.now() - gestureAt > 1000) return
     const control = controlFrom(event.target)
     if (!control) return
     if (performance.now() < suppressUntil.value && control !== userControl) return
     userControl = control
     schedule(control)
-  })
+  }
 
-  document.addEventListener('click', (event) => {
+  const onClick = (event: Event) => {
     noteGesture()
     const control = controlFrom(event.target)
     if (!control) return
@@ -69,5 +69,17 @@ export function watchFields(onField: (field: FieldContext) => void) {
     latest = control
     userControl = control
     publish(control)
-  })
+  }
+
+  document.addEventListener('focusin', onFocus)
+  document.addEventListener('click', onClick)
+
+  return () => {
+    window.clearTimeout(timer)
+    document.removeEventListener('pointerdown', noteGesture, true)
+    document.removeEventListener('keydown', noteGesture, true)
+    document.removeEventListener('focusin', onFocus)
+    document.removeEventListener('click', onClick)
+    style.remove()
+  }
 }

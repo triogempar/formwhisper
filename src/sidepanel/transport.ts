@@ -1,3 +1,4 @@
+import { withMessageTimeout } from './page-script'
 import type { FieldContext } from '../lib/types'
 
 export type FieldHandler = (field: FieldContext, tabId?: number) => void
@@ -92,6 +93,25 @@ async function activeTabId(): Promise<number> {
   return tab.id
 }
 
+function sendToPage(tabId: number, message: unknown): Promise<unknown> {
+  return withMessageTimeout(
+    new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          const error = chrome.runtime?.lastError
+          if (error) {
+            reject(new Error(error.message || 'The page did not answer.'))
+            return
+          }
+          resolve(response)
+        })
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('The page did not answer.'))
+      }
+    }),
+  )
+}
+
 function extensionTransport(): PanelTransport {
   return {
     listen(handler) {
@@ -108,7 +128,7 @@ function extensionTransport(): PanelTransport {
     },
     async fill(fieldId, value) {
       const tabId = await activeTabId()
-      const response = (await chrome.tabs.sendMessage(tabId, {
+      const response = (await sendToPage(tabId, {
         target: 'formwhisper-page',
         type: 'FILL',
         fieldId,
@@ -118,7 +138,7 @@ function extensionTransport(): PanelTransport {
     },
     async reveal(fieldId) {
       const tabId = await activeTabId()
-      await chrome.tabs.sendMessage(tabId, {
+      await sendToPage(tabId, {
         target: 'formwhisper-page',
         type: 'REVEAL',
         fieldId,
@@ -126,7 +146,7 @@ function extensionTransport(): PanelTransport {
     },
     async scan() {
       const tabId = await activeTabId()
-      const response = (await chrome.tabs.sendMessage(tabId, {
+      const response = (await sendToPage(tabId, {
         target: 'formwhisper-page',
         type: 'SCAN',
       })) as { title?: string; fields?: FieldContext[] } | undefined

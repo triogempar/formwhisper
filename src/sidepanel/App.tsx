@@ -9,6 +9,7 @@ import { readExplanationCache, writeExplanationCache } from '../lib/explanation-
 import { createFieldRequests, type FieldRequests } from '../lib/field-request'
 import { cancelsInference, instrumentLanguageModel } from '../lib/session-lifecycle'
 import { injectContentScript } from './inject'
+import { ensurePageScript, pingContentScript } from './page-script'
 import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
 import { createKv, STORAGE_KEYS } from '../lib/store'
@@ -99,6 +100,7 @@ export function App() {
   const downloadGen = useRef(0)
   const [bootError, setBootError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const [needsReload, setNeedsReload] = useState(false)
   const [tokenDraft, setTokenDraft] = useState('')
   const [live, setLive] = useState('')
   const ticket = useRef(0)
@@ -222,6 +224,20 @@ export function App() {
     fieldRequests.current?.start(field, mode, options)
   }
 
+  function reloadActivePage() {
+    const tabId = activeTab.current
+    if (tabId === null || typeof chrome === 'undefined' || !chrome.tabs?.reload) return
+    chrome.tabs.reload(tabId)
+  }
+
+  function notePageSilence(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : ''
+    if (message !== 'The page did not answer.') return false
+    setNeedsReload(true)
+    fieldRequests.current?.cancel('loading')
+    return true
+  }
+
   function retryField(field: FieldContext) {
     const current = latest.current
     if (!current.model) return
@@ -264,20 +280,27 @@ export function App() {
     const onRemoved = (tabId: number) => {
       if (cancelsInference('removed', activeTab.current, tabId)) stopForTab('removed')
     }
+    const attach = (tabId: number) => {
+      void ensurePageScript(tabId, { ping: pingContentScript, inject: injectContentScript }).then((result) => {
+        if (activeTab.current !== tabId) return
+        setNeedsReload(result === 'reload')
+        if (result === 'reload') fieldRequests.current?.cancel('loading')
+      })
+    }
     const onUpdated = (tabId: number, info: { status?: string }) => {
       if (info.status === 'loading' && cancelsInference('loading', activeTab.current, tabId)) stopForTab('loading')
-      if (info.status === 'complete' && tabId === activeTab.current) void injectContentScript(tabId)
+      if (info.status === 'complete' && tabId === activeTab.current) attach(tabId)
     }
     const onActivated = (info: { tabId: number }) => {
       activeTab.current = info.tabId
-      void injectContentScript(info.tabId)
+      attach(info.tabId)
     }
     if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
       void chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
         const tabId = tabs[0]?.id
         if (tabId === undefined) return
         activeTab.current = tabId
-        void injectContentScript(tabId)
+        attach(tabId)
       })
     }
     if (typeof chrome !== 'undefined' && chrome.tabs) {
@@ -359,6 +382,7 @@ export function App() {
       }
       await runChecklist(scanned.fields, scanned.title, choice)
     } catch (error) {
+      if (notePageSilence(error)) return
       setNotice(error instanceof Error ? error.message : 'The page could not be read.')
     }
   }
@@ -405,9 +429,15 @@ export function App() {
   }
 
   async function onFill(match: VaultMatch, fieldId: string) {
-    const ok = await transport.fill(fieldId, match.value)
-    setNotice(ok ? t('filled') : t('fillFailed'))
-    setLive(ok ? t('filled') : t('fillFailed'))
+    try {
+      const ok = await transport.fill(fieldId, match.value)
+      setNotice(ok ? t('filled') : t('fillFailed'))
+      setLive(ok ? t('filled') : t('fillFailed'))
+    } catch (error) {
+      if (notePageSilence(error)) return
+      setNotice(t('fillFailed'))
+      setLive(t('fillFailed'))
+    }
   }
 
   function onDownload() {
@@ -456,6 +486,12 @@ export function App() {
         <div className="banner" role="status">
           <InfoIcon />
           <span>{t('previewBanner')}</span>
+        </div>
+      ) : null}
+      {needsReload ? (
+        <div className="banner" role="status">
+          <span>{t('reloadPage')}</span>
+          <button className="btn" type="button" onClick={reloadActivePage}>{t('reloadPageAction')}</button>
         </div>
       ) : null}
       <nav className="tabs" aria-label="Formwhisper">
