@@ -6,8 +6,8 @@ import { EMPTY_LEDGER, normalizeLedger, recordInference, type Ledger } from '../
 import { matchVault } from '../lib/match'
 import type { FormModel } from '../lib/model'
 import { readExplanationCache, writeExplanationCache } from '../lib/explanation-cache'
-import { releaseHybridSessions } from '../lib/hybrid-firebase'
-import { cancelsInference, instrumentLanguageModel, releaseOnDeviceSessions } from '../lib/session-lifecycle'
+import { createFieldRequests, type FieldRequests } from '../lib/field-request'
+import { cancelsInference, instrumentLanguageModel } from '../lib/session-lifecycle'
 import { injectContentScript } from './inject'
 import { driveModelDownload, initialDownloadState, READY_DETAIL, STALL_DETAIL, type DownloadState } from '../lib/model-download'
 import { detectReadiness, downloadLanguageModel, type ModelReadiness } from '../lib/readiness'
@@ -34,6 +34,7 @@ type FieldView =
   | { status: 'wait'; field: FieldContext }
   | { status: 'blocked'; field: FieldContext }
   | { status: 'ready'; field: FieldContext; answer: ModelAnswer<import('../lib/types').FieldExplanation>; match: VaultMatch | null }
+  | { status: 'timeout'; field: FieldContext }
   | { status: 'error'; field: FieldContext; message: string }
 
 function normalizeSettings(value: unknown): Settings {
@@ -102,6 +103,7 @@ export function App() {
   const [live, setLive] = useState('')
   const ticket = useRef(0)
   const explainAbort = useRef<AbortController | null>(null)
+  const fieldRequests = useRef<FieldRequests | null>(null)
   const activeTab = useRef<number | null>(null)
   const declineRef = useRef<HTMLButtonElement>(null)
   const latest = useRef({ settings, profile, readiness, model, vault, ledger })
@@ -153,6 +155,42 @@ export function App() {
     await kv.set(STORAGE_KEYS.ledger, next)
   }
 
+  if (!fieldRequests.current) {
+    fieldRequests.current = createFieldRequests({
+      explainField: (field, mode, options) => {
+        const current = latest.current.model
+        if (!current) return Promise.reject(new Error('Formwhisper is not ready.'))
+        return current.explainField(field, mode, options)
+      },
+      onView: (next) => {
+        if (next.status === 'ready') {
+          const match = matchVault(next.answer.data.semanticType, latest.current.profile)
+          writeExplanationCache(next.field, next.answer)
+          setFieldView({ status: 'ready', field: next.field, answer: next.answer, match })
+          setLive(next.answer.data.explanation)
+          void remember(next.answer.source)
+          return
+        }
+        if (next.status === 'loading') {
+          setFieldView(next)
+          setLive(translate(latest.current.settings.locale, 'thinking'))
+          return
+        }
+        if (next.status === 'timeout') {
+          setFieldView(next)
+          setLive(translate(latest.current.settings.locale, 'deviceTimeout'))
+          return
+        }
+        if (next.status === 'error') {
+          setFieldView(next)
+          setLive(next.message)
+          return
+        }
+        setFieldView({ status: 'idle' })
+      },
+    })
+  }
+
   async function persistSettings(next: Settings) {
     setSettings(next)
     await kv.set(STORAGE_KEYS.settings, next)
@@ -169,45 +207,30 @@ export function App() {
     await kv.set(STORAGE_KEYS.vault, stored)
   }
 
-  async function explain(field: FieldContext, mode: RunMode) {
-    const current = latest.current.model
-    if (!current) return
-    explainAbort.current?.abort()
-    releaseHybridSessions()
-    releaseOnDeviceSessions()
-    const controller = new AbortController()
-    explainAbort.current = controller
-    const id = ++ticket.current
-    const cached = readExplanationCache(field)
-    if (cached) {
-      const match = matchVault(cached.data.semanticType, latest.current.profile)
-      setFieldView({ status: 'ready', field, answer: cached, match })
-      setLive(cached.data.explanation)
+  function explain(field: FieldContext, mode: RunMode, options?: { force?: boolean }) {
+    if (!latest.current.model) return
+    if (!options?.force) {
+      const cached = readExplanationCache(field)
+      if (cached) {
+        fieldRequests.current?.cancel('loading')
+        const match = matchVault(cached.data.semanticType, latest.current.profile)
+        setFieldView({ status: 'ready', field, answer: cached, match })
+        setLive(cached.data.explanation)
+        return
+      }
+    }
+    fieldRequests.current?.start(field, mode, options)
+  }
+
+  function retryField(field: FieldContext) {
+    const current = latest.current
+    if (!current.model) return
+    const choice = decide(current.settings, current.readiness, current.model.kind)
+    if (choice === 'need-consent' || choice === 'blocked' || choice === 'wait') {
+      routeField(field)
       return
     }
-    setFieldView({ status: 'loading', field })
-    setLive(t('thinking'))
-    try {
-      const answer = await current.explainField(field, mode, {
-        signal: controller.signal,
-        onPartial: (partial) => {
-          if (id !== ticket.current || controller.signal.aborted) return
-          setFieldView({ status: 'loading', field, partial })
-        },
-      })
-      if (id !== ticket.current || controller.signal.aborted) return
-      writeExplanationCache(field, answer)
-      const match = matchVault(answer.data.semanticType, latest.current.profile)
-      setFieldView({ status: 'ready', field, answer, match })
-      setLive(answer.data.explanation)
-      await remember(answer.source)
-    } catch (error) {
-      if (id !== ticket.current || controller.signal.aborted) return
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      const message = error instanceof Error ? error.message : 'The request failed.'
-      setFieldView({ status: 'error', field, message })
-      setLive(message)
-    }
+    explain(field, choice, { force: true })
   }
 
   function routeField(field: FieldContext) {
@@ -233,28 +256,22 @@ export function App() {
 
   useEffect(() => {
     instrumentLanguageModel()
-    const stopInference = () => {
+    const stopForTab = (reason: 'removed' | 'loading') => {
       explainAbort.current?.abort()
       downloadGen.current += 1
-      releaseHybridSessions()
-      releaseOnDeviceSessions()
+      fieldRequests.current?.cancel(reason)
     }
     const onRemoved = (tabId: number) => {
-      if (cancelsInference('removed', activeTab.current, tabId)) stopInference()
+      if (cancelsInference('removed', activeTab.current, tabId)) stopForTab('removed')
     }
     const onUpdated = (tabId: number, info: { status?: string }) => {
-      if (info.status === 'loading' && cancelsInference('loading', activeTab.current, tabId)) stopInference()
+      if (info.status === 'loading' && cancelsInference('loading', activeTab.current, tabId)) stopForTab('loading')
       if (info.status === 'complete' && tabId === activeTab.current) void injectContentScript(tabId)
     }
     const onActivated = (info: { tabId: number }) => {
-      if (cancelsInference('activated', activeTab.current, info.tabId)) stopInference()
       activeTab.current = info.tabId
       void injectContentScript(info.tabId)
     }
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') stopInference()
-    }
-    document.addEventListener('visibilitychange', onHide)
     if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
       void chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
         const tabId = tabs[0]?.id
@@ -263,28 +280,17 @@ export function App() {
         void injectContentScript(tabId)
       })
     }
-    window.addEventListener('pagehide', stopInference)
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.onRemoved.addListener(onRemoved)
       chrome.tabs.onUpdated.addListener(onUpdated)
       chrome.tabs.onActivated.addListener(onActivated)
     }
-    let port: chrome.runtime.Port | null = null
-    if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
-      port = chrome.runtime.connect({ name: 'formwhisper-panel' })
-      port.onDisconnect.addListener(stopInference)
-    }
     return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      window.removeEventListener('pagehide', stopInference)
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         chrome.tabs.onRemoved.removeListener(onRemoved)
         chrome.tabs.onUpdated.removeListener(onUpdated)
         chrome.tabs.onActivated.removeListener(onActivated)
       }
-      port?.onDisconnect.removeListener(stopInference)
-      port?.disconnect()
-      stopInference()
     }
   }, [])
 
@@ -502,6 +508,9 @@ export function App() {
           <FieldBody
             view={fieldView}
             t={t}
+            showCloud={!settings.neverCloud}
+            onRetry={(field) => retryField(field)}
+            onAskCloud={(field) => explain(field, 'only-cloud', { force: true })}
             onFill={(match, fieldId) => void onFill(match, fieldId)}
             vaultLocked={Boolean(vault?.encrypted && !profile)}
           />
@@ -619,11 +628,17 @@ function ThinkingLine({ active, label }: { active: boolean; label: string }) {
 function FieldBody({
   view,
   t,
+  showCloud,
+  onRetry,
+  onAskCloud,
   onFill,
   vaultLocked,
 }: {
   view: FieldView
   t: (key: CopyKey) => string
+  showCloud: boolean
+  onRetry: (field: FieldContext) => void
+  onAskCloud: (field: FieldContext) => void
   onFill: (match: VaultMatch, fieldId: string) => void
   vaultLocked: boolean
 }) {
@@ -649,6 +664,20 @@ function FieldBody({
       <section className="pad">
         <h2>{view.field.label || view.field.name}</h2>
         <p className="error" role="alert">{t('cloudOff')}</p>
+      </section>
+    )
+  }
+  if (view.status === 'timeout') {
+    return (
+      <section className="pad">
+        <h2>{view.field.label || view.field.name}</h2>
+        <p className="error" role="alert">{t('deviceTimeout')}</p>
+        <div className="actions">
+          <button className="btn" type="button" onClick={() => onRetry(view.field)}>{t('retry')}</button>
+          {showCloud ? (
+            <button className="btn-outline" type="button" onClick={() => onAskCloud(view.field)}>{t('askCloud')}</button>
+          ) : null}
+        </div>
       </section>
     )
   }

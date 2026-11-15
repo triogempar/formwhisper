@@ -12,7 +12,8 @@ import {
 import type { FwConfig } from './config'
 import { DEFAULT_CLOUD_MODEL } from './config'
 import type { ExplainOptions, FormModel } from './model'
-import { destroySession, noteModelActivity } from './session-lifecycle'
+import { inferenceLog } from './inference-log'
+import { destroySession, inferenceBusy, noteModelActivity } from './session-lifecycle'
 import { parseChecklist, parseFieldExplanation, parseScan, partialExplanation } from './parse'
 import { buildChecklistPrompt, buildFieldPrompt, buildScanPrompt } from './prompts'
 import { checklistJsonSchema, fieldJsonSchema, scanJsonSchema } from './schemas'
@@ -162,7 +163,19 @@ function releaseModelSession(model: GenerativeModel): void {
   }).catch(() => undefined)
 }
 
+function finishRequest(model: GenerativeModel): void {
+  if (inferenceBusy()) {
+    inferenceLog('session-kept', { reason: 'request-in-flight' })
+    return
+  }
+  releaseModelSession(model)
+}
+
 export function releaseHybridSessions(): void {
+  if (inferenceBusy()) {
+    inferenceLog('session-kept', { reason: 'release-while-busy' })
+    return
+  }
   for (const model of heldModels) releaseModelSession(model)
   noteModelActivity()
 }
@@ -223,6 +236,7 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
   return {
     kind: 'hybrid',
     async explainField(field, mode, options?: ExplainOptions) {
+      inferenceLog('generate-start', { kind: 'field', mode, label: field.label })
       await ensureFirebase(config, storedToken)
       const model = modelFor(mode, 'field')
       const prompt = buildFieldPrompt(field)
@@ -258,7 +272,8 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
           source: badgeFrom(result.response.inferenceSource),
         }
       } finally {
-        releaseModelSession(model)
+        inferenceLog('generate-finished', { kind: 'field', mode })
+        finishRequest(model)
       }
     },
     async checklist(fields, title, mode, options?: ExplainOptions) {
@@ -271,7 +286,8 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
           source: badgeFrom(result.response.inferenceSource),
         }
       } finally {
-        releaseModelSession(model)
+        inferenceLog('generate-finished', { kind: 'checklist', mode })
+        finishRequest(model)
       }
     },
     async readImage(jpegBase64, mode, options?: ExplainOptions) {
@@ -290,7 +306,8 @@ export function createHybridModel(config: FwConfig, storedToken: string | null):
           source: badgeFrom(result.response.inferenceSource),
         }
       } finally {
-        releaseModelSession(model)
+        inferenceLog('generate-finished', { kind: 'scan', mode })
+        finishRequest(model)
       }
     },
     prepareDevice(onProgress) {
