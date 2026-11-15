@@ -777,6 +777,7 @@ function FieldBody({
   return (
     <section>
       <div className="pad">
+        <SourceChip source={answer.source} />
         <h2>{field.label || field.name || 'Field'}</h2>
         <p className="meaning">{answer.data.explanation}</p>
         <p className="meta">
